@@ -1,0 +1,102 @@
+################OPTION###################
+# release or debug
+VERTYPE=RELEASE
+
+KERNEL:=$(shell uname)
+LIBDIR = linux
+#CPPSTD = c++98
+CPPSTD = c++11
+
+ARCH:=$(shell uname -m)
+RC:=$(ARCH)
+BIT32:=i686
+BIT64:=x86_64
+
+$(info KERNEL=$(KERNEL))
+$(info ARCH=$(ARCH))
+
+ifeq ($(KERNEL),Darwin)
+    LIBDIR = osx
+endif
+
+ifeq ($(RC),$(BIT32))
+	SHAREDLIB = -lefc32 -leso32 -lrt -lm -ldl -lpthread -lcrypto
+else
+	SHAREDLIB = -lefc64 -leso64 -ldl -lpthread -lcrypto
+endif
+
+ifeq ($(VERTYPE), RELEASE)
+CCOMPILEOPTION = -c -g -O2 -D__MAIN__
+CPPCOMPILEOPTION = -std=$(CPPSTD) -c -g -O2 -fpermissive -D__MAIN__
+TESTECO = testeco
+BENCHMARK = benchmark
+ECHOSERVER = echoserver
+else
+CCOMPILEOPTION = -c -g -D__MAIN__
+CPPCOMPILEOPTION = -std=$(CPPSTD) -c -g -fpermissive -DDEBUG -D__MAIN__
+TESTECO = testeco_d
+BENCHMARK = benchmark_d
+ECHOSERVER = echoserver_d
+endif
+
+CCOMPILE = gcc
+CPPCOMPILE = g++
+INCLUDEDIR = -I../../CxxJDK/inc \
+	-I../../CxxJDK/inc/comm \
+	-I../../CxxJDK/inc/efc \
+	-I../../CxxJDK/inc/efc/concurrent \
+	-I../../CxxJDK/inc/efc/cpp11 \
+	-I../../CxxJDK/inc/efc/nio \
+	-I../../CxxJDK/inc/libc \
+	-I../inc \
+	-I../ \
+
+LINK = g++
+LINKOPTION = -std=$(CPPSTD) -g
+LIBDIRS = -L../../CxxJDK/lib/$(LIBDIR)
+APPENDLIB = 
+
+BASE_OBJS =  \
+	../src/EContext.o \
+	../src/EFiber.o \
+	../src/EFiberBlocker.o \
+	../src/EFiberCondition.o \
+	../src/EFiberDebugger.o \
+	../src/EFiberMutex.o \
+	../src/EFiberScheduler.o \
+	../src/EFiberTimer.o \
+	../src/EFileContext.o \
+	../src/EHooker.o \
+	../src/EIoWaiter.o \
+	../src/eco_ae.o \
+	../src/eco_ae_epoll.o \
+	../src/eco_ae_kqueue.o \
+
+TESTECO_OBJS = testeco.o \
+
+BENCHMARK_OBJS = benchmark.o \
+
+ECHOSERVER_OBJS = echoserver.o \
+
+$(TESTECO): $(BASE_OBJS) $(TESTECO_OBJS) $(APPENDLIB)
+	$(LINK) $(LINKOPTION) -o $(TESTECO) $(LIBDIRS) $(BASE_OBJS) $(TESTECO_OBJS) $(SHAREDLIB) $(APPENDLIB)
+
+$(BENCHMARK): $(BASE_OBJS) $(BENCHMARK_OBJS) $(APPENDLIB)
+	$(LINK) $(LINKOPTION) -o $(BENCHMARK) $(LIBDIRS) $(BASE_OBJS) $(BENCHMARK_OBJS) $(SHAREDLIB) $(APPENDLIB)
+
+$(ECHOSERVER): $(BASE_OBJS) $(ECHOSERVER_OBJS) $(APPENDLIB)
+	$(LINK) $(LINKOPTION) -o $(ECHOSERVER) $(LIBDIRS) $(BASE_OBJS) $(ECHOSERVER_OBJS) $(SHAREDLIB) $(APPENDLIB)
+
+clean: 
+	rm -f $(BASE_OBJS) $(TESTECO_OBJS) $(BENCHMARK_OBJS) $(ECHOSERVER_OBJS)
+
+all: clean $(TESTECO) $(BENCHMARK) $(ECHOSERVER) clean
+.PRECIOUS:%.cpp %.c
+.SUFFIXES:
+.SUFFIXES:  .c .o .cpp
+
+.cpp.o:
+	$(CPPCOMPILE) -c -o $*.o $(CPPCOMPILEOPTION) $(INCLUDEDIR)  $*.cpp
+
+.c.o:
+	$(CCOMPILE) -c -o $*.o $(CCOMPILEOPTION) $(INCLUDEDIR) $*.c
