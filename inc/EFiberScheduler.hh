@@ -28,6 +28,7 @@ namespace eco {
 class EFiber;
 class EIoWaiter;
 class EFileContext;
+class SchedulerStub;
 
 class EFiberScheduler: public EObject {
 public:
@@ -74,10 +75,17 @@ public:
 	virtual void join();
 
 	/**
+	 * Type of fiber schedule balancer
+	 * @return SchedulerStub id, 0 always the call join()'s thread.
+	 */
+	typedef int fiber_schedule_balance_t(EFiber* fiber, int threadNums);
+
+	/**
 	 * Do schedule with thread pool and wait all fibers work done.
 	 * @param threadNums >= 1
+	 * @param callback if null then balance use rol-poling else use the callback return value
 	 */
-	virtual void join(int threadNums);
+	virtual void join(int threadNums, fiber_schedule_balance_t* callback=null);
 
 	/**
 	 *
@@ -104,10 +112,12 @@ private:
 	friend class EFiber;
 
 	int maxEventSetSize;
-	int concurrentThreadNumber;
+	int threadNums;
 
-	EFiberConcurrentQueue<EFiber > taskQueue;
-	EFiberConcurrentQueue<EFiber > localQueue; //only for current work thread.
+	EFiberConcurrentQueue<EFiber> defaultTaskQueue;
+	EA<SchedulerStub*>* schedulerStubs; // created only if threadNums > 1
+	fiber_schedule_balance_t* balanceCallback;
+	EAtomicCounter balanceIndex;
 
 	EAtomicBoolean hasError;
 	EAtomicCounter totalFiberCounter;
@@ -120,7 +130,7 @@ private:
 	/**
 	 *
 	 */
-	void joinWithThreadBind(EFiberConcurrentQueue<EFiber >& localQueue, EIoWaiter* ioWaiter, EA<EIoWaiter*>& ioWaiters);
+	void joinWithThreadBind(EA<SchedulerStub*>* schedulerStubs, int index);
 };
 
 } /* namespace eco */

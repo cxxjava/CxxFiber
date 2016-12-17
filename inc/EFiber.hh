@@ -147,7 +147,7 @@ protected:
 	volatile State state;
 
 	/* Fiber ID */
-	int fid;
+	int fid; // index from zero.
 	/* Fiber name */
 	EString name;
 
@@ -174,8 +174,7 @@ protected:
 	/**
 	 * Constructor
 	 */
-	EFiber();
-	EFiber(int stackSize);
+	EFiber(int stackSize = DEFAULT_STACK_SIZE);
 
 	void setScheduler(EFiberScheduler* scheduler);
 	void setIoWaiter(EIoWaiter* iowaiter);

@@ -458,11 +458,13 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
 		return 0;
 	}
 
+#if 1
 	// try once at immediately.
 	int ret = poll_f(fds, nfds, 0);
 	if (ret != 0) {
 		return ret;
 	}
+#endif
 
 	EIoWaiter* ioWaiter = EFiberScheduler::currentIoWaiter();
 	sp<EFiber> fiber = EFiber::currentFiber()->shared_from_this();
@@ -531,12 +533,14 @@ int select(int nfds, fd_set *readfds, fd_set *writefds,
 
 	nfds = ES_MIN(nfds, FD_SETSIZE);
 
+#if 1
 	// try once at immediately.
 	timeval zero_tv = {0, 0};
 	int ret = select_f(nfds, readfds, writefds, exceptfds, &zero_tv);
 	if (ret != 0) {
 		return ret;
 	}
+#endif
 
 	//FIXME: to support exceptfds.
 

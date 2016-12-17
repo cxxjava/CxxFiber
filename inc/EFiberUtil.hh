@@ -10,6 +10,10 @@
 
 #include "Efc.hh"
 
+#ifdef CPP11_SUPPORT
+#include <atomic>
+#endif
+
 namespace efc {
 namespace eco {
 

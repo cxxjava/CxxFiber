@@ -46,27 +46,6 @@ EFiber::~EFiber() {
 	ECO_DEBUG(EFiberDebugger::FIBER, "delete fiber#%d", fid);
 }
 
-EFiber::EFiber():
-		state(NEW),
-		fid(idCounter++),
-		stackSize(DEFAULT_STACK_SIZE),
-		context(null),
-		scheduler(null),
-		iowaiter(null),
-		boundQueue(null),
-		boundThreadID(-1),
-		blocker(null),
-		isIoWaitTimeout(false),
-		canceled(false),
-		packing(null) {
-	EFiber* cf = currentFiber();
-	if (cf) parent = cf->shared_from_this();
-	context = new EContext(this);
-	localValues = eso_hash_make(1, NULL);
-	packing = new EFiberConcurrentQueue<EFiber>::NODE();
-	ECO_DEBUG(EFiberDebugger::FIBER, "new fiber#%d: %d, %s", fid, DEFAULT_STACK_SIZE, "true");
-}
-
 EFiber::EFiber(int size):
 		state(NEW),
 		fid(idCounter++),
