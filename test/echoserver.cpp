@@ -1,6 +1,8 @@
 #include "main.hh"
 #include "Eco.hh"
 
+#include <sys/resource.h>
+
 #define LOG(fmt,...) ESystem::out->println(fmt, ##__VA_ARGS__)
 
 volatile int gStopFlag = 0;
@@ -25,9 +27,16 @@ MAIN_IMPL(testeco_echoserver) {
 
 	ESystem::init(argc, argv);
 
-	eso_signal(SIGINT, SigHandler);
+//	eso_signal(SIGINT, SigHandler);
 
 	printf("inited.\n");
+
+	rlimit of = {1000000, 1000000};
+	if (-1 == setrlimit(RLIMIT_NOFILE, &of)) {
+		perror("setrlimit");
+		exit(1);
+	}
+
 
 	try {
 		EFiberScheduler scheduler;
@@ -35,12 +44,16 @@ MAIN_IMPL(testeco_echoserver) {
 		scheduler.schedule([&](){
 			EServerSocket ss;
 			ss.setReuseAddress(true);
-			ss.bind(8888);
+			ss.bind(8888, 8192);
 
 			while (!gStopFlag) {
 				// accept
 				sp<ESocket> socket = ss.accept();
 				if (socket != null) {
+					socket->setTcpNoDelay(true);
+					socket->setSoLinger(true, 0);
+					socket->setReceiveBufferSize(256*1024);
+
 					scheduler.schedule([=](){
 						try {
 							char buf[512] = {0};

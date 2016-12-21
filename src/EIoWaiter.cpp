@@ -29,18 +29,6 @@ static void pipeEventProc(co_poll_t *poll, int fd, void *clientData, int mask) {
 	ECO_DEBUG(EFiberDebugger::WAITING, "io waiter signaled.");
 }
 
-static int fdLimit(int deflim) {
-	struct rlimit rlp;
-	if (getrlimit(RLIMIT_NOFILE, &rlp) < 0) {
-		return deflim;
-	}
-	if (rlp.rlim_max < 0 || rlp.rlim_max > ES_INT32_MAX_VALUE) {
-		return ES_INT32_MAX_VALUE;
-	} else {
-		return (int)rlp.rlim_max;
-	}
-}
-
 //=============================================================================
 
 EIoWaiter::~EIoWaiter() {

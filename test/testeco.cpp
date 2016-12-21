@@ -1157,7 +1157,7 @@ MAIN_IMPL(testeco) {
 //			test_nesting();
 //			test_channel();
 //			test_channel_one_thread();
-			test_channel_multi_thread();
+//			test_channel_multi_thread();
 //			test_mutex();
 //			test_mutex_multi_thread();
 //			test_condition();
@@ -1172,7 +1172,7 @@ MAIN_IMPL(testeco) {
 //			test_hook_signal(); //todo:
 //			test_hook_fcntl();
 //			test_hook_nonblocking();
-//			test_hook_read_write();
+			test_hook_read_write();
 //			test_not_hook_file();
 //			test_hook_pipe();
 //			test_hook_kqueue();

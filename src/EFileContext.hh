@@ -8,7 +8,8 @@
 #ifndef EFILECONTEXT_HH_
 #define EFILECONTEXT_HH_
 
-#include "EObject.hh"
+#include "Efc.hh"
+#include <vector>
 
 namespace efc {
 namespace eco {
@@ -45,6 +46,25 @@ private:
 	boolean userNonBlocked;
 	int recvTimeout;
 	int sendTimeout;
+};
+
+//=============================================================================
+
+/**
+ *
+ */
+
+class EFileContextManager {
+public:
+	EFileContextManager();
+	~EFileContextManager();
+
+	sp<EFileContext> get(int fd);
+	void remove(int fd);
+	void clear();
+
+private:
+	std::vector<std::vector<sp<EFileContext> > > hookedFiles;
 };
 
 } /* namespace eco */

@@ -28,6 +28,7 @@ namespace eco {
 class EFiber;
 class EIoWaiter;
 class EFileContext;
+class EFileContextManager;
 class SchedulerStub;
 
 class EFiberScheduler: public EObject {
@@ -122,7 +123,7 @@ private:
 	EAtomicBoolean hasError;
 	EAtomicCounter totalFiberCounter;
 
-	EConcurrentHashMap<int, EFileContext> hookedFiles;
+	EFileContextManager* hookedFiles;
 
 	static EThreadLocalStorage currScheduler;
 	static EThreadLocalStorage currIoWaiter;

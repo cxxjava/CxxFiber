@@ -135,5 +135,56 @@ boolean EFileContext::isSocketFile(int fd) {
 	return false;
 }
 
+//=============================================================================
+
+/**
+ * (FD_DEFAULT_CHUNKS * FD_CHUNK_CAPACITY) is the max fd value.
+ */
+#define FD_DEFAULT_CHUNKS 32
+#define FD_CHUNK_CAPACITY 32768
+
+EFileContextManager::EFileContextManager() :
+		hookedFiles(
+				(ES_ALIGN_UP(fdLimit(FD_DEFAULT_CHUNKS*FD_CHUNK_CAPACITY), FD_CHUNK_CAPACITY)
+						/ FD_CHUNK_CAPACITY),
+				std::vector < sp<EFileContext> > (FD_CHUNK_CAPACITY)) {
+	//
+}
+
+EFileContextManager::~EFileContextManager() {
+	//
+}
+
+sp<EFileContext> EFileContextManager::get(int fd) {
+	SpinLock* lock = LOCKFOR((void*)fd);
+	int index0 = ES_ALIGN_UP(fd, FD_CHUNK_CAPACITY) / FD_CHUNK_CAPACITY - 1;
+	sp<EFileContext> fc;
+	lock->lock();
+	int index1 = fd % FD_CHUNK_CAPACITY - 1;
+	fc = hookedFiles[index0][index1];
+	if (fc == null) {
+		fc = hookedFiles[index0][index1] = new EFileContext(fd);
+	}
+	lock->unlock();
+	return fc;
+}
+
+void EFileContextManager::remove(int fd) {
+	SpinLock* lock = LOCKFOR((void*)fd);
+	int index0 = ES_ALIGN_UP(fd, FD_CHUNK_CAPACITY) / FD_CHUNK_CAPACITY - 1;
+	sp<EFileContext> fc;
+	lock->lock();
+	int index1 = fd % FD_CHUNK_CAPACITY - 1;
+	fc = hookedFiles[index0][index1];
+	if (fc != null) {
+		fc.reset();
+	}
+	lock->unlock();
+}
+
+void EFileContextManager::clear() {
+	hookedFiles.clear();
+}
+
 } /* namespace eco */
 } /* namespace efc */

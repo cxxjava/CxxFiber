@@ -11,6 +11,7 @@
 #include "EIoWaiter.hh"
 #include "EFileContext.hh"
 #include "EFiberBlocker.hh"
+#include "EFileChannel.hh"
 #include "EFiberDebugger.hh"
 
 namespace efc {
@@ -88,14 +89,17 @@ private:
 
 EFiberScheduler::~EFiberScheduler() {
 	delete schedulerStubs;
+	delete hookedFiles;
 }
 
 EFiberScheduler::EFiberScheduler(int maxfd) :
 		maxEventSetSize(maxfd),
 		threadNums(1),
 		schedulerStubs(null),
-		balanceCallback(null) {
+		balanceCallback(null),
+		hookedFiles(new EFileContextManager()) {
 	//
+	EFileContextManager fcm;
 }
 
 void EFiberScheduler::schedule(sp<EFiber> fiber) {
@@ -483,25 +487,15 @@ EIoWaiter* EFiberScheduler::currentIoWaiter() {
 }
 
 sp<EFileContext> EFiberScheduler::getFileContext(int fd) {
-	sp<EFileContext> fdctx = hookedFiles.get(fd);
-	if (!fdctx) {
-		try {
-			fdctx = new EFileContext(fd);
-		} catch (...) {
-			return null; // fcntl error.
-		}
-		hookedFiles.put(fd, fdctx);
-	}
-	return fdctx;
+	return hookedFiles->get(fd);
 }
 
 void EFiberScheduler::delFileContext(int fd) {
-	hookedFiles.remove(fd);
+	hookedFiles->remove(fd);
 }
 
 void EFiberScheduler::clearFileContexts() {
-	ECO_DEBUG(EFiberDebugger::SCHEDULER, "clear %d file contexts.", hookedFiles.size());
-	hookedFiles.clear();
+	hookedFiles->clear();
 }
 
 } /* namespace eco */
