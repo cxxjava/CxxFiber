@@ -60,9 +60,6 @@ EFileContext::EFileContext(int fd): fd(fd),
 		len = sizeof(tv);
 		rv = getsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, &len);
 		sendTimeout = tv.tv_sec * 1000 + tv.tv_usec / 1000;
-	} else {
-		recvTimeout = EInteger::MAX_VALUE;
-		sendTimeout = EInteger::MAX_VALUE;
 	}
 }
 
@@ -96,7 +93,7 @@ void EFileContext::setRecvTimeout(const timeval* recvTimeout) {
 }
 
 int EFileContext::getRecvTimeout() {
-	return (recvTimeout == 0) ? EInteger::MAX_VALUE : recvTimeout;
+	return recvTimeout;
 }
 
 void EFileContext::setSendTimeout(const timeval* sendTimeout) {
@@ -104,7 +101,7 @@ void EFileContext::setSendTimeout(const timeval* sendTimeout) {
 }
 
 int EFileContext::getSendTimeout() {
-	return (sendTimeout == 0) ? EInteger::MAX_VALUE : sendTimeout;
+	return sendTimeout;
 }
 
 boolean EFileContext::isStreamFile(int fd) {
@@ -137,16 +134,8 @@ boolean EFileContext::isSocketFile(int fd) {
 
 //=============================================================================
 
-/**
- * (FD_DEFAULT_CHUNKS * FD_CHUNK_CAPACITY) is the max fd value.
- */
-#define FD_DEFAULT_CHUNKS 32
-#define FD_CHUNK_CAPACITY 32768
-
-EFileContextManager::EFileContextManager() :
-		hookedFiles(
-				(ES_ALIGN_UP(fdLimit(FD_DEFAULT_CHUNKS*FD_CHUNK_CAPACITY), FD_CHUNK_CAPACITY)
-						/ FD_CHUNK_CAPACITY),
+EFileContextManager::EFileContextManager(int maxfd) :
+		hookedFiles((ES_ALIGN_UP(maxfd, FD_CHUNK_CAPACITY) / FD_CHUNK_CAPACITY),
 				std::vector < sp<EFileContext> > (FD_CHUNK_CAPACITY)) {
 	//
 }
@@ -172,13 +161,9 @@ sp<EFileContext> EFileContextManager::get(int fd) {
 void EFileContextManager::remove(int fd) {
 	SpinLock* lock = LOCKFOR((void*)fd);
 	int index0 = ES_ALIGN_UP(fd, FD_CHUNK_CAPACITY) / FD_CHUNK_CAPACITY - 1;
-	sp<EFileContext> fc;
-	lock->lock();
 	int index1 = fd % FD_CHUNK_CAPACITY - 1;
-	fc = hookedFiles[index0][index1];
-	if (fc != null) {
-		fc.reset();
-	}
+	lock->lock();
+	hookedFiles[index0][index1].reset();
 	lock->unlock();
 }
 

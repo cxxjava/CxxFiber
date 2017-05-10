@@ -14,8 +14,20 @@
 #include "EFileChannel.hh"
 #include "EFiberDebugger.hh"
 
+#include <sys/resource.h>
+
 namespace efc {
 namespace eco {
+
+//=============================================================================
+
+static long fdLimit(int deflim) {
+	struct rlimit rlim;
+	if (getrlimit(RLIMIT_NOFILE, &rlim) < 0)
+		return deflim;
+	long limit = rlim.rlim_cur;
+	return (limit < 0 ? deflim : rlim.rlim_cur);
+}
 
 //=============================================================================
 
@@ -27,7 +39,9 @@ public:
 	EFiberConcurrentQueue<EFiber> taskQueue;
 	EIoWaiter ioWaiter;
 	EIoWaiter* volatile hungIoWaiter;
-	SchedulerStub(int maxEventSetSize): ioWaiter(maxEventSetSize), hungIoWaiter(null) {}
+	SchedulerStub(int maxEventSetSize) :
+			ioWaiter(maxEventSetSize), hungIoWaiter(null) {
+	}
 };
 
 struct SchedulerLocal {
@@ -92,14 +106,26 @@ EFiberScheduler::~EFiberScheduler() {
 	delete hookedFiles;
 }
 
-EFiberScheduler::EFiberScheduler(int maxfd) :
-		maxEventSetSize(maxfd),
+EFiberScheduler::EFiberScheduler() :
+		maxEventSetSize(fdLimit(FD_DEFAULT_CHUNKS * FD_CHUNK_CAPACITY)),
 		threadNums(1),
 		schedulerStubs(null),
 		balanceCallback(null),
-		hookedFiles(new EFileContextManager()) {
+		scheduleCallback(null),
+		hookedFiles(new EFileContextManager(maxEventSetSize)),
+		interrupted(false) {
 	//
-	EFileContextManager fcm;
+}
+
+EFiberScheduler::EFiberScheduler(int maxfd) :
+		maxEventSetSize(ES_MAX(maxfd, fdLimit(FD_DEFAULT_CHUNKS * FD_CHUNK_CAPACITY))),
+		threadNums(1),
+		schedulerStubs(null),
+		balanceCallback(null),
+		scheduleCallback(null),
+		hookedFiles(new EFileContextManager(maxEventSetSize)),
+		interrupted(false) {
+	//
 }
 
 void EFiberScheduler::schedule(sp<EFiber> fiber) {
@@ -127,7 +153,7 @@ void EFiberScheduler::schedule(sp<EFiber> fiber) {
 }
 
 #ifdef CPP11_SUPPORT
-void EFiberScheduler::schedule(std::function<void()> f, int stackSize) {
+sp<EFiber> EFiberScheduler::schedule(std::function<void()> f, int stackSize) {
 	class Fiber: public EFiber {
 	public:
 		Fiber(std::function<void()> f, int stackSize):
@@ -140,7 +166,9 @@ void EFiberScheduler::schedule(std::function<void()> f, int stackSize) {
 		std::function<void()> func;
 	};
 
-	this->schedule(new Fiber(f, stackSize));
+	sp<EFiber> fiber(new Fiber(f, stackSize));
+	this->schedule(fiber);
+	return fiber;
 }
 #endif
 
@@ -200,14 +228,48 @@ void EFiberScheduler::addtimer(std::function<void()> f, EDate* firstTime, llong 
 }
 #endif
 
+#ifdef CPP11_SUPPORT
+void EFiberScheduler::setScheduleCallback(std::function<void(int threadIndex,
+		SchedulePhase schedulePhase, EThread* currentThread,
+		EFiber* currentFiber)> callback) {
+	this->scheduleCallback = callback;
+}
+#else
+void EFiberScheduler::setScheduleCallback(thread_schedule_callback_t* callback) {
+	this->scheduleCallback = callback;
+}
+#endif
+
+#ifdef CPP11_SUPPORT
+void EFiberScheduler::setBalanceCallback(std::function<int(EFiber* fiber, int threadNums)> balancer) {
+	this->balanceCallback = balancer;
+}
+#else
+void EFiberScheduler::setBalanceCallback(fiber_schedule_balance_t* balancer) {
+	this->balanceCallback = balancer;
+}
+#endif
+
 void EFiberScheduler::join() {
+	EThread* currentThread = EThread::currentThread();
+#ifdef CPP11_SUPPORT
+	std::function<void(int threadIndex,
+			SchedulePhase schedulePhase, EThread* currentThread,
+			EFiber* currentFiber)> callback = scheduleCallback;
+#else
+	thread_schedule_callback_t* callback = scheduleCallback;
+#endif
 	// create io waiter.
-	long currentThreadID = EThread::currentThread()->getId();
+	long currentThreadID = currentThread->getId();
 	EIoWaiter ioWaiter(maxEventSetSize);
 	SchedulerLocal schedulerLocal(this);
 
 	currScheduler.set(&schedulerLocal);
 	currIoWaiter.set(&ioWaiter);
+
+	if (scheduleCallback) {
+		scheduleCallback(0, SCHEDULE_BEFORE, currentThread, NULL);
+	}
 
 	for (;;) {
 		int total = totalFiberCounter.value();
@@ -220,6 +282,14 @@ void EFiberScheduler::join() {
 				 */
 				int events = ioWaiter.onceProcessEvents(3000);
 
+				if (interrupted) {
+					ioWaiter.interrupt();
+				}
+
+				if (scheduleCallback) {
+					scheduleCallback(0, SCHEDULE_IDLE, currentThread, NULL);
+				}
+
 				continue;
 			} else {
 				break;
@@ -231,6 +301,10 @@ void EFiberScheduler::join() {
 			// io waiter process.
 			int events = ioWaiter.onceProcessEvents();
 			ECO_DEBUG(EFiberDebugger::SCHEDULER, "return the number of events: %d", events);
+
+			if (interrupted) {
+				ioWaiter.interrupt();
+			}
 		}
 
 		if (!fiber->boundQueue) {
@@ -246,12 +320,18 @@ void EFiberScheduler::join() {
 #endif
 
 		schedulerLocal.currFiber = fiber;
+		if (scheduleCallback) {
+			scheduleCallback(0, FIBER_BEFORE, currentThread, fiber);
+		}
 		fiber->context->swapIn();
+		if (scheduleCallback) {
+			scheduleCallback(0, FIBER_AFTER, currentThread, fiber);
+		}
 		schedulerLocal.currFiber = null;
 
 #ifdef DEBUG
 		llong t2 = ESystem::nanoTime();
-		ECO_DEBUG(EFiberDebugger::SCHEDULER, "fiter run time: %lldns, %s", t2 - t1, EThread::currentThread()->toString().c_str());
+		ECO_DEBUG(EFiberDebugger::SCHEDULER, "fiter run time: %lldns, %s", t2 - t1, currentThread->toString().c_str());
 #endif
 
 		switch (fiber->state) {
@@ -283,9 +363,14 @@ void EFiberScheduler::join() {
 	// do some clean.
 	clearFileContexts();
 	EContext::cleanOrignContext();
+
+	if (scheduleCallback) {
+		scheduleCallback(0, SCHEDULE_AFTER, currentThread, NULL);
+	}
 }
 
-void EFiberScheduler::join(int threadNums, fiber_schedule_balance_t* callback) {
+void EFiberScheduler::join(int threadNums) {
+
 	if (threadNums < 1) {
 		throw EIllegalArgumentException(__FILE__, __LINE__, "threadNums < 1");
 	}
@@ -295,7 +380,6 @@ void EFiberScheduler::join(int threadNums, fiber_schedule_balance_t* callback) {
 	}
 	// if (threadNums == 1) then ignore balanceCallback.
 	this->threadNums = threadNums;
-	this->balanceCallback = callback;
 
 	// create thread local scheduler stub
 	schedulerStubs = new EA<SchedulerStub*>(threadNums);
@@ -314,7 +398,7 @@ void EFiberScheduler::join(int threadNums, fiber_schedule_balance_t* callback) {
 	public:
 		virtual void run() {
 			try {
-				scheduler->joinWithThreadBind(scheduler->schedulerStubs, index);
+				scheduler->joinWithThreadBind(scheduler->schedulerStubs, index, this);
 			} catch (...) {
 				scheduler->hasError.set(true);
 			}
@@ -326,7 +410,7 @@ void EFiberScheduler::join(int threadNums, fiber_schedule_balance_t* callback) {
 	 */
 
 	// create other threads.
-	ea<Worker> pool(threadNums - 1);
+	EA<sp<Worker> > pool(threadNums - 1);
 	for (int i=0; i<threadNums-1; i++) {
 		Worker* worker = new Worker();
 		worker->scheduler = this;
@@ -353,7 +437,7 @@ void EFiberScheduler::join(int threadNums, fiber_schedule_balance_t* callback) {
 	}
 
 	// current thread work.
-	joinWithThreadBind(schedulerStubs, 0);
+	joinWithThreadBind(schedulerStubs, 0, EThread::currentThread());
 
 	// wait other threads work finished.
 	for (int i=0; i<pool.length(); i++) {
@@ -368,16 +452,21 @@ void EFiberScheduler::join(int threadNums, fiber_schedule_balance_t* callback) {
 	}
 }
 
-void EFiberScheduler::joinWithThreadBind(EA<SchedulerStub*>* schedulerStubs, int index) {
+void EFiberScheduler::joinWithThreadBind(EA<SchedulerStub*>* schedulerStubs,
+		int index, EThread* currentThread) {
 	SchedulerStub* stub = schedulerStubs->getAt(index);
 	EIoWaiter* ioWaiter = &stub->ioWaiter;
 	EFiberConcurrentQueue<EFiber>* localQueue = &stub->taskQueue;
 
-	long currentThreadID = EThread::currentThread()->getId();
+	long currentThreadID = currentThread->getId();
 	SchedulerLocal schedulerLocal(this);
 
 	currScheduler.set(&schedulerLocal);
 	currIoWaiter.set(ioWaiter);
+
+	if (scheduleCallback) {
+		scheduleCallback(index, SCHEDULE_BEFORE, currentThread, NULL);
+	}
 
 	for (;;) {
 		int total = totalFiberCounter.value();
@@ -393,6 +482,14 @@ void EFiberScheduler::joinWithThreadBind(EA<SchedulerStub*>* schedulerStubs, int
 				int events = ioWaiter->onceProcessEvents(3000);
 				stub->hungIoWaiter = null;
 
+				if (interrupted) {
+					ioWaiter->interrupt();
+				}
+
+				if (scheduleCallback) {
+					scheduleCallback(index, SCHEDULE_IDLE, currentThread, NULL);
+				}
+
 				continue;
 			} else {
 				break;
@@ -404,7 +501,13 @@ void EFiberScheduler::joinWithThreadBind(EA<SchedulerStub*>* schedulerStubs, int
 			// io waiter process.
 			int events = ioWaiter->onceProcessEvents();
 			ECO_DEBUG(EFiberDebugger::SCHEDULER, "return the number of events: %d", events);
+
+			if (interrupted) {
+				ioWaiter->interrupt();
+			}
 		}
+
+		fiber->setThreadIndex(index);
 
 		if (!fiber->boundQueue) {
 			fiber->boundQueue = localQueue;
@@ -419,12 +522,18 @@ void EFiberScheduler::joinWithThreadBind(EA<SchedulerStub*>* schedulerStubs, int
 #endif
 
 		schedulerLocal.currFiber = fiber;
+		if (scheduleCallback) {
+			scheduleCallback(index, FIBER_BEFORE, currentThread, fiber);
+		}
 		fiber->context->swapIn();
+		if (scheduleCallback) {
+			scheduleCallback(index, FIBER_AFTER, currentThread, fiber);
+		}
 		schedulerLocal.currFiber = null;
 
 #ifdef DEBUG
 		llong t2 = ESystem::nanoTime();
-		ECO_DEBUG(EFiberDebugger::SCHEDULER, "fiter run time: %lldns, %s", t2 - t1, EThread::currentThread()->toString().c_str());
+		ECO_DEBUG(EFiberDebugger::SCHEDULER, "fiter run time: %lldns, %s", t2 - t1, currentThread->toString().c_str());
 #endif
 
 		switch (fiber->state) {
@@ -466,6 +575,18 @@ void EFiberScheduler::joinWithThreadBind(EA<SchedulerStub*>* schedulerStubs, int
 			iw->signal();
 		}
 	}
+
+	if (scheduleCallback) {
+		scheduleCallback(index, SCHEDULE_AFTER, currentThread, NULL);
+	}
+}
+
+void EFiberScheduler::interrupt() {
+	interrupted = true;
+}
+
+boolean EFiberScheduler::isInterrupted() {
+	return interrupted;
 }
 
 int EFiberScheduler::totalFiberCount() {

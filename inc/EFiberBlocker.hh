@@ -34,11 +34,14 @@ public:
 private:
 	friend class EFiberScheduler;
 
+	class SyncObj: public EQueueEntry, public ESynchronizeable {
+	};
+
 	uint wakeup_;
 	uint limit_;
 
-	EConcurrentLinkedQueue<EObject> waitQueue;
-	sp<ESynchronizeable> sync_;
+	EConcurrentIntrusiveDeque<EQueueEntry> waitQueue;
+	sp<SyncObj> sync_;
 
 	boolean swapOut(EFiber* fiber);
 };

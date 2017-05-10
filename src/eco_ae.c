@@ -104,10 +104,10 @@ int eco_poll_get_size(co_poll_t *poll) {
 /* Resize the maximum set size of the event loop.
  * If the requested set size is smaller than the current set size, but
  * there is already a file descriptor in use that is >= the requested
- * set size minus one, AE_ERR is returned and the operation is not
+ * set size minus one, -1 is returned and the operation is not
  * performed at all.
  *
- * Otherwise AE_OK is returned and the operation is successful. */
+ * Otherwise 0 is returned and the operation is successful. */
 int eco_poll_resize(co_poll_t *poll, int setsize) {
     int i;
 
@@ -120,7 +120,7 @@ int eco_poll_resize(co_poll_t *poll, int setsize) {
     poll->setsize = setsize;
 
     /* Make sure that if we created new slots, they are initialized with
-     * an AE_NONE mask. */
+     * an ECO_POLL_NONE mask. */
     for (i = poll->maxfd+1; i < setsize; i++)
     	poll->events[i].mask = ECO_POLL_NONE;
     return 0;
@@ -245,24 +245,32 @@ es_int64_t eco_poll_time_event_create(co_poll_t *poll, es_int64_t milliseconds,
 
 es_status_t eco_poll_time_event_delete(co_poll_t *poll, es_int64_t id)
 {
-    coTimeEvent *te, *prev = NULL;
+	coTimeEvent *te = poll->timeEventHead;
+	while(te) {
+		if (te->id == id) {
+			te->id = ECO_POLL_DELETED_EVENT_ID;
+			return ES_SUCCESS;
+		}
+		te = te->next;
+	}
+	return ES_FAILURE; /* NO event with the specified ID found */
+}
 
-    te = poll->timeEventHead;
-    while(te) {
-        if (te->id == id) {
-            if (prev == NULL)
-            	poll->timeEventHead = te->next;
-            else
-                prev->next = te->next;
-            if (te->finalizerProc)
-                te->finalizerProc(poll, te->clientData);
-            free(te);
-            return ES_SUCCESS;
-        }
-        prev = te;
-        te = te->next;
-    }
-    return ES_FAILURE; /* NO event with the specified ID found */
+es_status_t eco_poll_time_fire_all(co_poll_t* poll) {
+	long cur_sec, cur_ms;
+	coTimeEvent *te;
+
+    aeGetTime(&cur_sec, &cur_ms);
+
+	te = poll->timeEventHead;
+	while(te) {
+		if (te->id != ECO_POLL_DELETED_EVENT_ID) {
+			te->when_sec = cur_sec;
+			te->when_ms = cur_ms;
+		}
+		te = te->next;
+	}
+	return ES_SUCCESS;
 }
 
 /* Search the first timer to fire.
@@ -294,7 +302,7 @@ static coTimeEvent *aeSearchNearestTimer(co_poll_t *poll)
 /* Process time events */
 static int processTimeEvents(co_poll_t *poll) {
     int processed = 0;
-    coTimeEvent *te;
+    coTimeEvent *te, *prev;
     es_int64_t maxId;
     time_t now = time(NULL);
 
@@ -315,12 +323,32 @@ static int processTimeEvents(co_poll_t *poll) {
     }
     poll->lastTime = now;
 
+    prev = NULL;
     te = poll->timeEventHead;
     maxId = poll->timeEventNextId-1;
     while(te) {
         long now_sec, now_ms;
         es_int64_t id;
 
+        /* Remove events scheduled for deletion. */
+		if (te->id == ECO_POLL_DELETED_EVENT_ID) {
+			coTimeEvent *next = te->next;
+			if (prev == NULL)
+				poll->timeEventHead = te->next;
+			else
+				prev->next = te->next;
+			if (te->finalizerProc)
+				te->finalizerProc(poll, te->clientData);
+			free(te);
+			te = next;
+			continue;
+		}
+
+		/* Make sure we don't process time events created by time events in
+		 * this iteration. Note that this check is currently useless: we always
+		 * add new timers on the head, however if we change the implementation
+		 * detail, this check may be useful again: we keep it here for future
+		 * defense. */
         if (te->id > maxId) {
             te = te->next;
             continue;
@@ -334,28 +362,14 @@ static int processTimeEvents(co_poll_t *poll) {
             id = te->id;
             retval = te->timeProc(poll, id, te->clientData);
             processed++;
-            /* After an event is processed our time event list may
-             * no longer be the same, so we restart from head.
-             * Still we make sure to don't process events registered
-             * by event handlers itself in order to don't loop forever.
-             * To do so we saved the max ID we want to handle.
-             *
-             * FUTURE OPTIMIZATIONS:
-             * Note that this is NOT great algorithmically. Redis uses
-             * a single time event so it's not a problem but the right
-             * way to do this is to add the new elements on head, and
-             * to flag deleted elements in a special way for later
-             * deletion (putting references to the nodes to delete into
-             * another linked list). */
             if (retval != ECO_POLL_NOMORE) {
                 aeAddMillisecondsToNow(retval,&te->when_sec,&te->when_ms);
             } else {
-            	eco_poll_time_event_delete(poll, id);
+            	te->id = ECO_POLL_DELETED_EVENT_ID;
             }
-            te = poll->timeEventHead;
-        } else {
-            te = te->next;
         }
+        prev = te;
+		te = te->next;
     }
     return processed;
 }

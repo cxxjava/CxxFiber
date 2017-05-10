@@ -53,6 +53,7 @@ extern "C" {
 #define ECO_POLL_ALL_EVENTS (ECO_POLL_FILE_EVENTS|ECO_POLL_TIME_EVENTS)
 
 #define ECO_POLL_NOMORE -1
+#define ECO_POLL_DELETED_EVENT_ID -1
 
 typedef struct co_poll_t co_poll_t;
 
@@ -137,6 +138,9 @@ es_int64_t eco_poll_time_event_create(co_poll_t* poll, es_int64_t milliseconds,
 		coTimeProc *proc, void *clientData,
 		coEventFinalizerProc *finalizerProc);
 es_status_t eco_poll_time_event_delete(co_poll_t* poll, es_int64_t id);
+
+/* This api is only for fiber mode! */
+es_status_t eco_poll_time_fire_all(co_poll_t* poll);
 
 /* Wait for milliseconds until the given file descriptor becomes
  * writable/readable/exception */

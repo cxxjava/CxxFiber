@@ -33,12 +33,39 @@ class SchedulerStub;
 
 class EFiberScheduler: public EObject {
 public:
+	/**
+	 * Schedule phase for per-thread.
+	 */
+	enum SchedulePhase {
+		SCHEDULE_BEFORE = 0,
+		SCHEDULE_IDLE = 1,
+		FIBER_BEFORE = 2,
+		FIBER_AFTER = 3,
+		SCHEDULE_AFTER = 4
+	};
+
+	/**
+	 * Type of the callback for per-thread schedule.
+	 */
+	typedef void thread_schedule_callback_t(int threadIndex,
+			SchedulePhase schedulePhase, EThread* currentThread,
+			EFiber* currentFiber);
+
+	/**
+	 * Type of fiber schedule balancer
+	 *
+	 * @return SchedulerStub id (threadIndex), 0 always the call join()'s thread.
+	 */
+	typedef int fiber_schedule_balance_t(EFiber* fiber, int threadNums);
+
+public:
 	virtual ~EFiberScheduler();
 
 	/**
 	 * New scheduler instance for signal-thread.
 	 */
-	EFiberScheduler(int maxfd=100000);
+	EFiberScheduler();
+	EFiberScheduler(int maxfd);
 
 	/**
 	 * Add a new fiber to this scheduler
@@ -49,7 +76,7 @@ public:
 	/**
 	 * Add a new lambda function as fiber to this scheduler (c++11)
 	 */
-	virtual void schedule(std::function<void()> f, int stackSize=1024*1024);
+	virtual sp<EFiber> schedule(std::function<void()> f, int stackSize=1024*1024);
 #endif
 
 	/**
@@ -71,22 +98,46 @@ public:
 #endif
 
 	/**
+	 * Set the callback for scheduler looping
+	 *
+	 * @param callback Schedule callback at different phase.
+	 */
+#ifdef CPP11_SUPPORT
+	virtual void setScheduleCallback(std::function<void(int threadIndex,
+			SchedulePhase schedulePhase, EThread* currentThread,
+			EFiber* currentFiber)> callback);
+#else
+	virtual void setScheduleCallback(thread_schedule_callback_t* callback);
+#endif
+
+	/**
+	 * Set the callback for schedule balance
+	 *
+	 * @param balancer if null then balance use rol-poling else use the callback return value
+	 */
+#ifdef CPP11_SUPPORT
+	virtual void setBalanceCallback(std::function<int(EFiber* fiber, int threadNums)> balancer);
+#else
+	virtual void setBalanceCallback(fiber_schedule_balance_t* balancer);
+#endif
+
+	/**
 	 * Do schedule and wait all fibers work done.
 	 */
 	virtual void join();
 
 	/**
-	 * Type of fiber schedule balancer
-	 * @return SchedulerStub id, 0 always the call join()'s thread.
+	 * Do schedule with thread pool and wait all fibers work done.
+	 *
+	 * @param threadNums >= 1
 	 */
-	typedef int fiber_schedule_balance_t(EFiber* fiber, int threadNums);
+	virtual void join(int threadNums);
 
 	/**
-	 * Do schedule with thread pool and wait all fibers work done.
-	 * @param threadNums >= 1
-	 * @param callback if null then balance use rol-poling else use the callback return value
+	 *
 	 */
-	virtual void join(int threadNums, fiber_schedule_balance_t* callback=null);
+	virtual void interrupt();
+	virtual boolean isInterrupted();
 
 	/**
 	 *
@@ -117,7 +168,11 @@ private:
 
 	EFiberConcurrentQueue<EFiber> defaultTaskQueue;
 	EA<SchedulerStub*>* schedulerStubs; // created only if threadNums > 1
+#ifdef CPP11_SUPPORT
+	std::function<int(EFiber* fiber, int threadNums)> balanceCallback;
+#else
 	fiber_schedule_balance_t* balanceCallback;
+#endif
 	EAtomicCounter balanceIndex;
 
 	EAtomicBoolean hasError;
@@ -125,13 +180,24 @@ private:
 
 	EFileContextManager* hookedFiles;
 
+	volatile boolean interrupted;
+
+#ifdef CPP11_SUPPORT
+	std::function<void(int threadIndex,
+			SchedulePhase schedulePhase, EThread* currentThread,
+			EFiber* currentFiber)> scheduleCallback;
+#else
+	thread_schedule_callback_t* scheduleCallback;
+#endif
+
 	static EThreadLocalStorage currScheduler;
 	static EThreadLocalStorage currIoWaiter;
 
 	/**
 	 *
 	 */
-	void joinWithThreadBind(EA<SchedulerStub*>* schedulerStubs, int index);
+	void joinWithThreadBind(EA<SchedulerStub*>* schedulerStubs, int index,
+			EThread* currentThread);
 };
 
 } /* namespace eco */

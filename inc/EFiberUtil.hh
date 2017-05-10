@@ -13,20 +13,9 @@
 #ifdef CPP11_SUPPORT
 #include <atomic>
 #endif
-#include <sys/resource.h>
 
 namespace efc {
 namespace eco {
-
-//=============================================================================
-
-static long fdLimit(int deflim) {
-	struct rlimit rlim;
-	if (getrlimit(RLIMIT_NOFILE, &rlim) < 0)
-		return -1;
-	long limit = rlim.rlim_cur;
-	return (limit < 0 ? deflim : rlim.rlim_cur);
-}
 
 //=============================================================================
 

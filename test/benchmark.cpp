@@ -200,14 +200,17 @@ static int balance_callback(EFiber* fiber, int threadNums) {
 	}
 }
 
+#define SET_RLIMIT    0
 #define USE_SIG_BLOCK 0
 
 static void test_iohooking_performance() {
+#if SET_RLIMIT
 	rlimit of = {1000000, 1000000};
 	if (-1 == setrlimit(RLIMIT_NOFILE, &of)) {
 		perror("setrlimit");
 		exit(1);
 	}
+#endif
 
 #if USE_SIG_BLOCK
 	sigset_t new_mask, old_mask, wait_mask;

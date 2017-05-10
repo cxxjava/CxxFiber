@@ -22,9 +22,11 @@
 #include <sys/types.h>
 #include <sys/fcntl.h>
 #include <sys/ioctl.h>
+#include <sys/uio.h>
 #ifdef __linux__
 #include <bits/signum.h> //__SIGRTMAX
 #include <sys/epoll.h>
+#include <sys/sendfile.h>
 #endif
 #ifdef __APPLE__
 #include <sys/event.h>
@@ -102,6 +104,7 @@ typedef int (*__poll_t)(struct pollfd fds[], nfds_t nfds, int timeout);
 
 typedef int (*epoll_wait_t)(int epfd, struct epoll_event *events,
                      int maxevents, int timeout);
+typedef ssize_t (*sendfile_t)(int out_fd, int in_fd, off_t *offset, size_t count);
 #endif
 
 #ifdef __APPLE__
@@ -111,6 +114,7 @@ typedef int (*kevent_t)(int kq, const struct kevent *changelist, int nchanges,
 typedef int (*kevent64_t)(int kq, const struct kevent64_s *changelist,
 		int nchanges, struct kevent64_s *eventlist, int nevents,
 		unsigned int flags, const struct timespec *timeout);
+typedef int (*sendfile_t)(int fd, int s, off_t offset, off_t *len, struct sf_hdtr *hdtr, int flags);
 #endif
 
 //=============================================================================
@@ -142,6 +146,7 @@ static fread_t fread_f = NULL;
 static fwrite_t fwrite_f = NULL;
 static pread_t pread_f = NULL;
 static pwrite_t pwrite_f = NULL;
+static sendfile_t sendfile_f = NULL;
 #ifdef __linux__
 static dup3_t dup3_f = NULL;
 static gethostbyname_t gethostbyname_f = NULL;
@@ -186,6 +191,7 @@ fread_f = (fread_t)dlsym(RTLD_NEXT, "fread");
 fwrite_f = (fwrite_t)dlsym(RTLD_NEXT, "fwrite");
 pread_f = (pread_t)dlsym(RTLD_NEXT, "pread");
 pwrite_f = (pwrite_t)dlsym(RTLD_NEXT, "pwrite");
+sendfile_f = (sendfile_t)dlsym(RTLD_NEXT, "sendfile");
 #ifdef __linux__
 dup3_f = (dup3_t)dlsym(RTLD_NEXT, "dup3");
 gethostbyname_f = (gethostbyname_t)dlsym(RTLD_NEXT, "gethostbyname");
@@ -860,6 +866,54 @@ int epoll_wait(int epfd, struct epoll_event *events,
 	}
 }
 
+ssize_t sendfile(int out_fd, int in_fd, off_t *offset, size_t count)
+{
+	EHooker::_initzz_();
+
+	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
+	if (!scheduler || !EFileContext::isStreamFile(out_fd)) {
+		return sendfile_f(out_fd, in_fd, offset, count);
+	}
+
+	sp<EFileContext> fdctx = scheduler->getFileContext(out_fd);
+	if (!fdctx) {
+		return -1;
+	}
+
+	boolean isUNB = fdctx->isUserNonBlocked();
+	if (isUNB) {
+		return sendfile_f(out_fd, in_fd, offset, count);
+	}
+
+	int milliseconds = fdctx->getSendTimeout();
+	if (milliseconds == 0) milliseconds = -1;
+	off_t offset_ = offset ? *offset : 0;
+
+RETRY:
+	pollfd pfd;
+	pfd.fd = out_fd;
+	pfd.events = POLLOUT;
+	pfd.revents = 0;
+
+	ssize_t ret = poll(&pfd, 1, milliseconds);
+	if (ret == 1) { //success
+		ret = sendfile_f(out_fd, in_fd, &offset_, count);
+		if (ret > 0) count -= ret;
+		if ((ret >= 0 && count > 0)
+				|| (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))) {
+			if (count > 0) goto RETRY;
+		}
+	} else if (ret == 0) { //timeout
+		ret = -1;
+		errno = isUNB ? EAGAIN : ETIMEDOUT;
+	}
+
+	if (offset) *offset = offset_;
+	if (ret == 0) errno = 0;
+
+	return ret;
+}
+
 #else // __APPLE__
 
 // gethostbyname() is asynchronous already, @see libinfo/mdns_module.c:_mdns_search():kqueue!
@@ -951,6 +1005,57 @@ int kevent64(int kq, const struct kevent64_s *changelist, int nchanges,
 	}
 }
 
+int sendfile(int fd, int s, off_t offset, off_t *len, struct sf_hdtr *hdtr, int flags)
+{
+	EHooker::_initzz_();
+
+	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
+	if (!scheduler || !EFileContext::isStreamFile(s)) {
+		return sendfile_f(fd, s, offset, len, hdtr, flags);
+	}
+
+	sp<EFileContext> fdctx = scheduler->getFileContext(s);
+	if (!fdctx) {
+		return -1;
+	}
+
+	boolean isUNB = fdctx->isUserNonBlocked();
+	if (isUNB) {
+		return sendfile_f(fd, s, offset, len, hdtr, flags);
+	}
+
+	int milliseconds = fdctx->getSendTimeout();
+	if (milliseconds == 0) milliseconds = -1;
+	off_t inlen = len ? *len : 0;
+	off_t outlen;
+
+RETRY:
+	pollfd pfd;
+	pfd.fd = s;
+	pfd.events = POLLOUT;
+	pfd.revents = 0;
+
+	int ret = poll(&pfd, 1, milliseconds);
+	if (ret == 1) { //success
+		outlen = inlen;
+		ret = sendfile_f(fd, s, offset, &outlen, hdtr, flags);
+		if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+			if (outlen > 0) {
+				offset += outlen;
+				inlen -= outlen;
+			}
+			if (inlen > 0) goto RETRY;
+		}
+	} else if (ret == 0) { //timeout
+		ret = -1;
+		errno = isUNB ? EAGAIN : ETIMEDOUT;
+	}
+
+	if (ret == 0) errno = 0;
+
+	return ret;
+}
+
 #endif
 
 } //!C
@@ -970,11 +1075,18 @@ llong EHooker::interruptEscapedTime() {
 }
 
 template <typename F>
-static ssize_t call_fn(F fn, int fd, va_list args) {
+static ssize_t call_fn(EFileContext* fdctx, F fn, int fd, va_list args) {
 	if ((intptr_t)fn == (intptr_t)accept_f) {
 		struct sockaddr* addr = va_arg(args, struct sockaddr*);
 		socklen_t* addrlen = va_arg(args, socklen_t*);
-		return accept_f(fd, addr, addrlen);
+		int socket = accept_f(fd, addr, addrlen);
+		if (fdctx != null && !fdctx->isUserNonBlocked()) {
+			// if listen socket is non-blocking then accepted socket also non-blocking,
+			// we need reset it to back.
+			int flags = fcntl_f(socket, F_GETFL);
+			fcntl_f(socket, F_SETFL, flags & ~O_NONBLOCK);
+		}
+		return socket;
 	}
 	else if ((intptr_t)fn == (intptr_t)read_f) {
 		void* buf = va_arg(args, void*);
@@ -1076,7 +1188,7 @@ ssize_t EHooker::comm_io_on_fiber(F fn, const char* name, int event, int fd, ...
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
 	if (!scheduler || !EFileContext::isStreamFile(fd)) {
-		ret = call_fn(fn, fd, args);
+		ret = call_fn(null, fn, fd, args);
 		va_end(args);
 		return ret;
 	}
@@ -1087,17 +1199,41 @@ ssize_t EHooker::comm_io_on_fiber(F fn, const char* name, int event, int fd, ...
 		return -1;
 	}
 
-	int milliseconds = (event == POLLIN) ? fdctx->getRecvTimeout() : fdctx->getSendTimeout();
+	boolean isUNB = fdctx->isUserNonBlocked();
+	if (isUNB) {
+		ret = call_fn(null, fn, fd, args);
+		va_end(args);
+		return ret;
+	}
 
+	if ((event & POLLOUT) == POLLOUT) {
+		// try once at immediately.
+		ret = call_fn(fdctx.get(), fn, fd, args);
+		if (ret >= 0) { //success?
+			va_end(args);
+			return ret;
+		}
+	}
+
+	int milliseconds = (event == POLLIN) ? fdctx->getRecvTimeout() : fdctx->getSendTimeout();
+	if (milliseconds == 0) milliseconds = -1;
+
+RETRY:
 	pollfd pfd;
 	pfd.fd = fd;
 	pfd.events = event;
 	pfd.revents = 0;
 
 	ret = poll(&pfd, 1, milliseconds);
-	if (ret == 1) {
-		ret = call_fn(fn, fd, args);
-	}
+	if (ret == 1) { //success
+		ret = call_fn(fdctx.get(), fn, fd, args);
+		if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+			goto RETRY;
+		}
+    } else if (ret == 0) { //timeout
+        ret = -1;
+        errno = isUNB ? EAGAIN : ETIMEDOUT;
+    }
 
 	va_end(args);
 	return ret;

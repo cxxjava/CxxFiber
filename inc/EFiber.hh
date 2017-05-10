@@ -25,7 +25,9 @@ class EFiberScheduler;
 template<typename E>
 class EFiberLocal;
 
-abstract class EFiber: public ERunnable, public enable_shared_from_this<EFiber> {
+abstract class EFiber: public EQueueEntry,
+		public ERunnable,
+		public enable_shared_from_this<EFiber> {
 public:
 	enum State {
 		NEW,
@@ -56,12 +58,22 @@ public:
 	/**
 	 *
 	 */
-	EFiber& setName(const char* name);
+	void setName(const char* name);
 
 	/**
 	 *
 	 */
 	const char* getName();
+
+	/**
+	 *
+	 */
+	void setTag(long tag);
+
+	/**
+	 *
+	 */
+	const long getTag();
 
 	/**
 	 *
@@ -87,6 +99,11 @@ public:
 	 *
 	 */
 	int getId();
+
+	/**
+	 *
+	 */
+	int getThreadIndex();
 
 	/**
 	 *
@@ -150,6 +167,10 @@ protected:
 	int fid; // index from zero.
 	/* Fiber name */
 	EString name;
+	/* Fiber tag */
+	long tag;
+	/* Fiber bound thread index*/
+	int threadIndex; // 0 is the EScheduler join()'s thread
 
 	int stackSize;
 	EContext* context; /* Fiber's context */
@@ -179,6 +200,7 @@ protected:
 	void setScheduler(EFiberScheduler* scheduler);
 	void setIoWaiter(EIoWaiter* iowaiter);
 	void setState(State state);
+	void setThreadIndex(int index);
 
 	void swapIn();
 	void swapOut();

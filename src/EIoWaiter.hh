@@ -54,7 +54,6 @@ public:
 	 *
 	 */
 	void interrupt();
-	boolean isInterrupted();
 
 	/**
 	 *
@@ -70,7 +69,6 @@ private:
 	co_poll_t* poll;
 	es_pipe_t* pipe;
 	int waiters;
-	boolean _interrupted;
 
 	static void fileEventProc(co_poll_t *poll, int fd, void *clientData, int mask);
 	static int  timeEventProc(co_poll_t *poll, llong id, void *clientData);

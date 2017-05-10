@@ -54,9 +54,15 @@ private:
  *
  */
 
+/**
+ * (FD_DEFAULT_CHUNKS * FD_CHUNK_CAPACITY) is the max fd value.
+ */
+#define FD_DEFAULT_CHUNKS 32
+#define FD_CHUNK_CAPACITY 32768
+
 class EFileContextManager {
 public:
-	EFileContextManager();
+	EFileContextManager(int maxfd);
 	~EFileContextManager();
 
 	sp<EFileContext> get(int fd);

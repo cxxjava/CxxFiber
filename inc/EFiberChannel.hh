@@ -65,7 +65,7 @@ public:
 	}
 
 private:
-	EConcurrentLinkedQueue<E> dataQueue;
+	EConcurrentLiteQueue<E> dataQueue;
 	EFiberBlocker reader;
 	EFiberBlocker writer;
 };

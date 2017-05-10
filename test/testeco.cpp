@@ -13,14 +13,36 @@
 #include <sys/ioctl.h>
 #include <signal.h>
 #include <netdb.h>
+#include <sys/stat.h>
 #ifdef __linux__
 #include <sys/epoll.h>
+#include <linux/version.h>
+#include <sys/sendfile.h>
 #endif
 #ifdef __APPLE__
 #include <sys/event.h>
 #endif
 
 #define LOG(fmt,...) ESystem::out->println(fmt, ##__VA_ARGS__)
+
+static const char* g_ip = "0.0.0.0";
+static const uint16_t g_port = 8888;
+
+static inline int do_read(int fd, char * b, int l)
+{
+	int r = 0, t = 0;
+	for (;;) {
+		t = ::read(fd, b + r, l - r);
+		if (t < 1) {
+//			LOG("%s:%u, msg=%s", __FUNCTION__, __LINE__, strerror(errno));
+			return -1;
+		}
+		r += t;
+		return r;
+	}
+
+	return -1;
+}
 
 class MySubFiber: public EFiber {
 public:
@@ -105,6 +127,14 @@ static void test_multi_thread() {
 	LOG("test_multi_thread() finished!");
 }
 
+static void go_func_test1() {
+	LOG("go_func_test1");
+}
+
+static void go_func_test2(EFiberScheduler* scheduler) {
+	LOG("go_func_test2, scheduler hashCode: %d", scheduler->hashCode());
+}
+
 static void test_c11schedule() {
 	EFiberScheduler* scheduler = new EFiberScheduler();
 	scheduler->schedule(new MyFiber());
@@ -113,6 +143,11 @@ static void test_c11schedule() {
 	scheduler->schedule(new MyFiber());
 
 #ifdef CPP11_SUPPORT
+
+	scheduler->schedule(go_func_test1);
+
+	scheduler->schedule(std::bind(&go_func_test2, scheduler));
+
 	scheduler->schedule(
 		[](){
 			EFiber* fiber = EFiber::currentFiber();
@@ -881,6 +916,12 @@ static void test_hook_read_write() {
 		int readed = read(fd, buf, sizeof(buf));
 		LOG("readed=%d, errno=%d, buf=%s", readed, errno, buf);
 
+		// write big data.
+		es_data_t* wbuf = eso_mmalloc(102400000);
+		eso_mmemfill(wbuf, '1');
+		written = write(fd, (char *)wbuf, eso_mnode_size(wbuf));
+		eso_mfree(wbuf);
+
 		close(fd);
 	});
 #if MULTITHREAD
@@ -889,20 +930,6 @@ static void test_hook_read_write() {
 #else
 	scheduler.join();
 #endif
-#endif
-}
-
-static void test_not_hook_file() {
-#ifdef CPP11_SUPPORT
-	EFiberScheduler scheduler;
-	scheduler.schedule([&]() {
-		es_file_t* pfile = eso_fopen("./test_file.txt", "r+");
-//		int fd = ::open("./test_file.txt", O_RDWR);
-		int r = ::write(eso_fileno(pfile), (void*)"1234567890", 10);
-		eso_fclose(pfile);
-//		::close(fd);
-	});
-	scheduler.join();
 #endif
 }
 
@@ -1043,6 +1070,95 @@ static void test_hook_gethostbyname() {
 #endif
 }
 
+static void test_hook_sendfile() {
+	EFiberScheduler scheduler;
+	scheduler.schedule([&](){
+		int ret;
+		int accept_fd = socket(AF_INET, SOCK_STREAM, 0);
+		ES_ASSERT(accept_fd >= 0);
+
+#ifdef __APPLE__
+		int v = 1;
+		ret = setsockopt(accept_fd, SOL_SOCKET, SO_REUSEPORT, &v, sizeof(v));
+#else
+#if LINUX_VERSION_CODE>= KERNEL_VERSION(3,9,0)
+		int v = 1;
+		ret = setsockopt(accept_fd, SOL_SOCKET, SO_REUSEPORT, &v, sizeof(v));
+#endif
+#endif
+
+		sockaddr_in addr;
+		addr.sin_family = AF_INET;
+		addr.sin_port = htons(g_port);
+		addr.sin_addr.s_addr = inet_addr(g_ip);
+		ret = bind(accept_fd, (sockaddr*)&addr, sizeof(addr));
+		ES_ASSERT(ret == 0);
+
+		ret = listen(accept_fd, 8192);
+		ES_ASSERT(ret == 0);
+		for (;;) {
+			socklen_t addr_len = sizeof(addr);
+			int s = accept(accept_fd, (sockaddr*)&addr, &addr_len);
+			if (s < 0) {
+				perror("accept error:");
+				continue;
+			}
+
+			int size = 256 * 1024;
+			setsockopt(s, SOL_SOCKET, SO_RCVBUF, (char *)&size, sizeof(size));
+
+			int flag = 1;
+			setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(flag));
+
+			struct linger li = { 1, 0 };
+			setsockopt(s, SOL_SOCKET, SO_LINGER, (char *)&li, sizeof(li));
+
+			scheduler.schedule([s]() {
+				while (1) {
+					int rsize = 1024;
+					char rbuf[rsize];
+
+					ssize_t rn = do_read(s, rbuf, rsize);
+					if (rn < 0) {
+						shutdown(s, 0x02);
+						close(s);
+						break;
+					}
+
+					const char* filename = "xxx.zip";
+					struct stat filestat;
+					stat(filename, &filestat);
+					int fd = open(filename, O_RDONLY);
+					off_t off = 0;
+					off_t num = filestat.st_size;
+#ifdef __APPLE__
+					int result = sendfile(fd, s, 0, &num, NULL, 0);
+#else
+					int result = sendfile(s, fd, &off, num);
+#endif
+					close(fd);
+					printf("reuslt=%d, fd=%d, num=%d, errno=%d, error=%s\n", result, fd, num, errno, strerror(errno));
+				}
+			});
+		}
+	});
+	scheduler.join();
+}
+
+static void test_not_hook_file() {
+#ifdef CPP11_SUPPORT
+	EFiberScheduler scheduler;
+	scheduler.schedule([&]() {
+		es_file_t* pfile = eso_fopen("./test_file.txt", "r+");
+//		int fd = ::open("./test_file.txt", O_RDWR);
+		int r = ::write(eso_fileno(pfile), (void*)"1234567890", 10);
+		eso_fclose(pfile);
+//		::close(fd);
+	});
+	scheduler.join();
+#endif
+}
+
 static void test_nio() {
 	ESocketChannel* socketChannel = ESocketChannel::open();
 	socketChannel->configureBlocking(false );
@@ -1107,13 +1223,82 @@ static void test_nio() {
 	delete socketChannel;
 }
 
-static void test_nio_in_fiber() {
+static void test_sslsocket() {
+	char buffer[4096];
+	int ret;
+	ESSLSocket *socket = new ESSLSocket();
+	socket->setReceiveBufferSize(10240);
+	socket->connect("www.baidu.com", 443, 3000);
+	socket->setSoTimeout(3000);
+	char *get_str = "GET / HTTP/1.1\r\n"
+					"Accept: image/gif, image/jpeg, image/pjpeg, image/pjpeg, application/x-shockwave-flash, application/msword, application/vnd.ms-excel, application/vnd.ms-powerpoint, application/xaml+xml, application/x-ms-xbap, application/x-ms-application, */*\r\n"
+					"Accept-Language: zh-cn\r\n"
+					"User-Agent: Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET4.0C; .NET4.0E; .NET CLR 2.0.50727)\r\n"
+					"Accept-Encoding: gzip, deflate\r\n"
+					"Host: www.baidu.com\r\n"
+					"Connection: Close\r\n" //"Connection: Keep-Alive\r\n"
+					"Cookie: BAIDUID=72CBD0B204EC83BF3C5C0FA7A9C89637:FG=1\r\n\r\n";
+	EOutputStream *sos = socket->getOutputStream();
+	EInputStream *sis = socket->getInputStream();
+	sos->write(get_str, strlen(get_str));
+	LOG("socket available=[%d]", sis->available());
+	try {
+		while ((ret = sis->read(buffer, sizeof(buffer))) > 0) {
+			LOG("socket ret=[%d], available=[%d]", ret, sis->available());
+			LOG("socket read=[%s]", buffer);
+		}
+	} catch (...) {
+	}
+	sis->close();
+	sos->close();
+	socket->close();
+	delete socket;
+}
+
+static void test_sslserversocket() {
+	ESSLServerSocket *serverSocket = new ESSLServerSocket();
+	serverSocket->setSSLParameters(null,
+			"./certs/tests-cert.pem",
+			"./certs/tests-key.pem",
+			null, null);
+	serverSocket->setReuseAddress(true);
+	serverSocket->bind(8443);
+	LOG("serverSocket=%s", serverSocket->toString().c_str());
+	int count = 0;
+	char buffer[11];
+	while (count < 10) {
+		try {
+			ESSLSocket *clientSocket = serverSocket->accept();
+			count++;
+			EInetSocketAddress *isar = clientSocket->getRemoteSocketAddress();
+			EInetSocketAddress *isal = clientSocket->getLocalSocketAddress();
+			LOG("socket rip=[%s], rport=%d", isar->getHostName(), isar->getPort());
+			LOG("socket lip=[%s], lport=%d", isal->getHostName(), isal->getPort());
+			try {
+				EInputStream *sis = clientSocket->getInputStream();
+				eso_memset(buffer, 0, sizeof(buffer) - 1);
+				sis->read(buffer, sizeof(buffer));
+				LOG("socket read=[%s]", buffer);
+			} catch (EIOException &e) {
+				LOG("read e=%s", e.toString().c_str());
+			}
+			delete clientSocket;
+		} catch (...) {
+			LOG("accept error.");
+		}
+	}
+	delete serverSocket;
+}
+
+static void test_efc_in_fiber() {
 #ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 
 	scheduler.schedule([&]() {
 		while (true) {
-			test_nio();
+//			test_nio();
+//			test_sslsocket();
+			test_sslserversocket();
 		}
 	});
 
@@ -1172,12 +1357,14 @@ MAIN_IMPL(testeco) {
 //			test_hook_signal(); //todo:
 //			test_hook_fcntl();
 //			test_hook_nonblocking();
-			test_hook_read_write();
 //			test_not_hook_file();
 //			test_hook_pipe();
 //			test_hook_kqueue();
 //			test_hook_gethostbyname();
 //			test_nio();
+			test_not_hook_file();
+//			test_nio();
+//			test_sslsocket();
 //			test_nio_in_fiber();
 
 //		} while (++i < 5);

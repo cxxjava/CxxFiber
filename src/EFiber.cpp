@@ -49,6 +49,7 @@ EFiber::~EFiber() {
 EFiber::EFiber(int size):
 		state(NEW),
 		fid(idCounter++),
+		tag(ES_LONG_MIN_VALUE),
 		stackSize(ES_MAX(size, MIN_STACK_SIZE)),
 		context(null),
 		scheduler(null),
@@ -58,7 +59,8 @@ EFiber::EFiber(int size):
 		blocker(null),
 		isIoWaitTimeout(false),
 		canceled(false),
-		packing(null) {
+		packing(null),
+		threadIndex(0) {
 	EFiber* cf = currentFiber();
 	if (cf) parent = cf->shared_from_this();
 	context = new EContext(this);
@@ -67,13 +69,20 @@ EFiber::EFiber(int size):
 	ECO_DEBUG(EFiberDebugger::FIBER, "new fiber#%d: %d", fid, stackSize);
 }
 
-EFiber& EFiber::setName(const char* name) {
+void EFiber::setName(const char* name) {
 	this->name = name;
-	return *this;
 }
 
 const char* EFiber::getName() {
 	return name.isEmpty() ? "null" : name.c_str();
+}
+
+void EFiber::setTag(long tag) {
+	this->tag = tag;
+}
+
+const long EFiber::getTag() {
+	return tag;
 }
 
 void EFiber::cancel() {
@@ -94,6 +103,10 @@ int EFiber::getStackSize() {
 
 int EFiber::getId() {
 	return fid;
+}
+
+int EFiber::getThreadIndex() {
+	return threadIndex;
 }
 
 EFiber::State EFiber::getState() {
@@ -170,6 +183,10 @@ void EFiber::setIoWaiter(EIoWaiter* iowaiter) {
 
 void EFiber::setState(State state) {
 	this->state = state;
+}
+
+void EFiber::setThreadIndex(int index) {
+	this->threadIndex = index;
 }
 
 void EFiber::swapIn() {

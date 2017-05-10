@@ -36,10 +36,8 @@ EIoWaiter::~EIoWaiter() {
 	eso_pipe_destroy(&pipe);
 }
 
-EIoWaiter::EIoWaiter(int iosetSize): _interrupted(false), waiters(0) {
-	int __maxfd = ES_MIN(iosetSize, fdLimit(iosetSize));
-
-	poll = eco_poll_create(__maxfd);
+EIoWaiter::EIoWaiter(int iosetSize): waiters(0) {
+	poll = eco_poll_create(iosetSize);
 	pipe = eso_pipe_create();
 
 	// register pipe for poll wakeup.
@@ -48,10 +46,6 @@ EIoWaiter::EIoWaiter(int iosetSize): _interrupted(false), waiters(0) {
 
 void EIoWaiter::loopProcessEvents() {
 	for (;;) {
-		if (isInterrupted()) {
-			break; //end of loop
-		}
-
 		EFiber::yield(); //!
 
 		int events = eco_poll_process_events(poll, ECO_POLL_ALL_EVENTS, 0);
@@ -60,10 +54,6 @@ void EIoWaiter::loopProcessEvents() {
 }
 
 int EIoWaiter::onceProcessEvents(int timeout) {
-	if (isInterrupted()) {
-		return -1;
-	}
-
 	int events = eco_poll_process_events(poll, ECO_POLL_ALL_EVENTS, timeout);
 	ECO_DEBUG(EFiberDebugger::WAITING, "get %d ready events, timeout=%d", events, timeout);
 	return events;
@@ -141,11 +131,7 @@ int EIoWaiter::getWaitersCount() {
 }
 
 void EIoWaiter::interrupt() {
-	_interrupted = true;
-}
-
-boolean EIoWaiter::isInterrupted() {
-	return _interrupted;
+	eco_poll_time_fire_all(poll);
 }
 
 boolean EIoWaiter::swapOut(sp<EFiber>& fiber) {

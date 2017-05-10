@@ -28,7 +28,7 @@ EFiberBlocker::~EFiberBlocker() {
 EFiberBlocker::EFiberBlocker(uint capacity, uint limit):
 		wakeup_(capacity),
 		limit_(limit),
-		sync_(new ESynchronizeable) {
+		sync_(new SyncObj) {
 	ECO_DEBUG(EFiberDebugger::BLOCKER, "fiber blocker#%p created.", this);
 }
 
@@ -128,7 +128,7 @@ boolean EFiberBlocker::tryWait(llong time, ETimeUnit* unit) {
 }
 
 boolean EFiberBlocker::wakeUp() {
-	sp<EObject> waiter;
+	sp<EQueueEntry> waiter;
 
 	SYNCHRONIZED(sync_.get()) {
 		waiter = waitQueue.poll();
