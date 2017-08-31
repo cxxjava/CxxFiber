@@ -8,7 +8,7 @@
 #ifndef EFIBERLOCAL_HH_
 #define EFIBERLOCAL_HH_
 
-#include "EFiber.hh"
+#include "./EFiber.hh"
 
 namespace efc {
 namespace eco {

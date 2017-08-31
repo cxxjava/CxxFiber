@@ -9,7 +9,7 @@
 #define EIOWAITER_HH_
 
 #include "Efc.hh"
-#include "EFiber.hh"
+#include "../inc/EFiber.hh"
 #include "eco_ae.h"
 
 namespace efc {

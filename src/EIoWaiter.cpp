@@ -5,8 +5,8 @@
  *      Author: cxxjava@163.com
  */
 
-#include "EIoWaiter.hh"
-#include "EFiberDebugger.hh"
+#include "./EIoWaiter.hh"
+#include "../inc/EFiberDebugger.hh"
 
 #include <sys/resource.h>
 

@@ -5,11 +5,11 @@
  *      Author: cxxjava@163.com
  */
 
-#include "EHooker.hh"
-#include "EIoWaiter.hh"
-#include "EFileContext.hh"
-#include "EFiberLocal.hh"
-#include "EFiberScheduler.hh"
+#include "./EHooker.hh"
+#include "./EIoWaiter.hh"
+#include "./EFileContext.hh"
+#include "../inc/EFiberLocal.hh"
+#include "../inc/EFiberScheduler.hh"
 #include "eco_ae.h"
 
 #include <dlfcn.h>
@@ -163,6 +163,8 @@ static kevent64_t kevent64_f = NULL;
 
 //=============================================================================
 
+//@see: http://docs.oracle.com/cd/E19253-01/819-7050/chapter3-24/
+
 DEFINE_STATIC_INITZZ_BEGIN(EHooker)
 signal_f = (signal_t)dlsym(RTLD_NEXT, "signal");
 sleep_f = (sleep_t)dlsym(RTLD_NEXT, "sleep");
@@ -265,8 +267,12 @@ sig_t signal(int sig, sig_t func)
 
 	ES_ASSERT(sig < __SIGRTMAX);
 	if (sig < __SIGRTMAX) {
-		sigfunc_map[sig] = func;
-		signal_f(sig, sigfunc);
+		if ((long)func > 512) { //special defined sig_t is always less 512 ?
+			sigfunc_map[sig] = func;
+			signal_f(sig, sigfunc);
+		} else {
+			signal_f(sig, func);
+		}
 		return func;
 	}
 	fprintf(stderr, "sig_no > %d\n", __SIGRTMAX);
@@ -282,7 +288,7 @@ unsigned int sleep(unsigned int seconds)
 		return sleep_f(seconds);
 	}
 
-	int milliseconds = seconds * 1000;
+	llong milliseconds = seconds * 1000;
 	EFiber::sleep(milliseconds);
 	return 0;
 }
@@ -295,7 +301,7 @@ int usleep(useconds_t usec) {
 		return usleep_f(usec);
 	}
 
-	int milliseconds = usec / 1000;
+	llong milliseconds = usec / 1000;
 	EFiber::sleep(milliseconds);
 	return 0;
 }
@@ -313,7 +319,7 @@ int nanosleep(const struct timespec *req, struct timespec *rem) {
 		return nanosleep_f(req, rem);
 	}
 
-	int milliseconds = req->tv_sec * 1000 + req->tv_nsec / 1000000;
+	llong milliseconds = req->tv_sec * 1000 + req->tv_nsec / 1000000;
 	EFiber::sleep(milliseconds);
 	return 0;
 }
@@ -850,7 +856,7 @@ int epoll_wait(int epfd, struct epoll_event *events,
 
 	ioWaiter->setFileEvent(epfd, ECO_POLL_READABLE, fiber);
 
-	int milliseconds = (timeout > 0) ? timeout : EInteger::MAX_VALUE;
+	llong milliseconds = (timeout > 0) ? timeout : EInteger::MAX_VALUE;
 	llong timerID = ioWaiter->setupTimer(milliseconds, fiber);
 
 	ioWaiter->swapOut(fiber); // pause the fiber.
@@ -944,7 +950,7 @@ int kevent(int kq, const struct kevent *changelist, int nchanges,
 
 	ioWaiter->setFileEvent(kq, ECO_POLL_READABLE, fiber);
 
-	int milliseconds = timeout ? (timeout->tv_sec * 1000 + timeout->tv_nsec / 1000000) : EInteger::MAX_VALUE;
+	llong milliseconds = timeout ? (timeout->tv_sec * 1000 + timeout->tv_nsec / 1000000) : EInteger::MAX_VALUE;
 	llong timerID = ioWaiter->setupTimer(milliseconds, fiber);
 
 	ioWaiter->swapOut(fiber); // pause the fiber.
@@ -988,7 +994,7 @@ int kevent64(int kq, const struct kevent64_s *changelist, int nchanges,
 
 	ioWaiter->setFileEvent(kq, ECO_POLL_READABLE, fiber);
 
-	int milliseconds = timeout ? (timeout->tv_sec * 1000 + timeout->tv_nsec / 1000000) : EInteger::MAX_VALUE;
+	llong milliseconds = timeout ? (timeout->tv_sec * 1000 + timeout->tv_nsec / 1000000) : EInteger::MAX_VALUE;
 	llong timerID = ioWaiter->setupTimer(milliseconds, fiber);
 
 	ioWaiter->swapOut(fiber); // pause the fiber.
@@ -1075,7 +1081,15 @@ llong EHooker::interruptEscapedTime() {
 }
 
 template <typename F>
-static ssize_t call_fn(EFileContext* fdctx, F fn, int fd, va_list args) {
+static ssize_t call_fn(EFileContext* fdctx, F fn, int fd, va_list _args) {
+	ssize_t ret = -1;
+	va_list args;
+#ifdef va_copy
+	va_copy(args, _args);
+#else
+	args = _args;
+#endif
+
 	if ((intptr_t)fn == (intptr_t)accept_f) {
 		struct sockaddr* addr = va_arg(args, struct sockaddr*);
 		socklen_t* addrlen = va_arg(args, socklen_t*);
@@ -1086,23 +1100,23 @@ static ssize_t call_fn(EFileContext* fdctx, F fn, int fd, va_list args) {
 			int flags = fcntl_f(socket, F_GETFL);
 			fcntl_f(socket, F_SETFL, flags & ~O_NONBLOCK);
 		}
-		return socket;
+		ret = socket;
 	}
 	else if ((intptr_t)fn == (intptr_t)read_f) {
 		void* buf = va_arg(args, void*);
 		size_t count = va_arg(args, size_t);
-		return read_f(fd, buf, count);
+		ret = read_f(fd, buf, count);
 	}
 	else if ((intptr_t)fn == (intptr_t)readv_f) {
 		struct iovec* iov = va_arg(args, struct iovec*);
 		int iovcnt = va_arg(args, int);
-		return readv_f(fd, iov, iovcnt);
+		ret = readv_f(fd, iov, iovcnt);
 	}
 	else if ((intptr_t)fn == (intptr_t)recv_f) {
 		void *buf = va_arg(args, void*);
 		size_t len = va_arg(args, size_t);
 		int flags = va_arg(args, int);
-		return recv_f(fd, buf, len, flags);
+		ret = recv_f(fd, buf, len, flags);
 	}
 	else if ((intptr_t)fn == (intptr_t)recvfrom_f) {
 		void *buf = va_arg(args, void*);
@@ -1110,28 +1124,28 @@ static ssize_t call_fn(EFileContext* fdctx, F fn, int fd, va_list args) {
 		int flags = va_arg(args, int);
 		struct sockaddr *src_addr = va_arg(args, struct sockaddr*);
 		socklen_t *addrlen = va_arg(args, socklen_t*);
-		return recvfrom_f(fd, buf, len, flags, src_addr, addrlen);
+		ret = recvfrom_f(fd, buf, len, flags, src_addr, addrlen);
 	}
 	else if ((intptr_t)fn == (intptr_t)recvmsg_f) {
 		struct msghdr *msg = va_arg(args, struct msghdr*);
 		int flags = va_arg(args, int);
-		return recvmsg_f(fd, msg, flags);
+		ret = recvmsg_f(fd, msg, flags);
 	}
 	else if ((intptr_t)fn == (intptr_t)write_f) {
 		void* buf = va_arg(args, void*);
 		size_t count = va_arg(args, size_t);
-		return write_f(fd, buf, count);
+		ret = write_f(fd, buf, count);
 	}
 	else if ((intptr_t)fn == (intptr_t)writev_f) {
 		struct iovec* iov = va_arg(args, struct iovec*);
 		int iovcnt = va_arg(args, int);
-		return writev_f(fd, iov, iovcnt);
+		ret = writev_f(fd, iov, iovcnt);
 	}
 	else if ((intptr_t)fn == (intptr_t)send_f) {
 		void *buf = va_arg(args, void*);
 		size_t len = va_arg(args, size_t);
 		int flags = va_arg(args, int);
-		return send_f(fd, buf, len, flags);
+		ret = send_f(fd, buf, len, flags);
 	}
 	else if ((intptr_t)fn == (intptr_t)sendto_f) {
 		void *buf = va_arg(args, void*);
@@ -1139,42 +1153,50 @@ static ssize_t call_fn(EFileContext* fdctx, F fn, int fd, va_list args) {
 		int flags = va_arg(args, int);
 		struct sockaddr *dest_addr = va_arg(args, struct sockaddr*);
 		socklen_t addrlen = va_arg(args, socklen_t);
-		return sendto_f(fd, buf, len, flags, dest_addr, addrlen);
+		ret = sendto_f(fd, buf, len, flags, dest_addr, addrlen);
 	}
 	else if ((intptr_t)fn == (intptr_t)sendmsg_f) {
 		struct msghdr *msg = va_arg(args, struct msghdr*);
 		int flags = va_arg(args, int);
-		return sendmsg_f(fd, msg, flags);
+		ret = sendmsg_f(fd, msg, flags);
 	}
 	else if ((intptr_t)fn == (intptr_t)fread_f) { //fread
 		void *ptr = va_arg(args, void*);
 		size_t size = va_arg(args, size_t);
 		size_t nitems = va_arg(args, size_t);
 		FILE *stream  = va_arg(args, FILE*);
-		return fread_f(ptr, size, nitems, stream);
+		ret = fread_f(ptr, size, nitems, stream);
 	}
 	else if ((intptr_t)fn == (intptr_t)fwrite_f) { //fwrite
 		void *ptr = va_arg(args, void*);
 		size_t size = va_arg(args, size_t);
 		size_t nitems = va_arg(args, size_t);
 		FILE *stream  = va_arg(args, FILE*);
-		return fwrite_f(ptr, size, nitems, stream);
+		ret = fwrite_f(ptr, size, nitems, stream);
 	}
 	else if ((intptr_t)fn == (intptr_t)pread_f) {
 		void *buf = va_arg(args, void*);
 		size_t count = va_arg(args, size_t);
 		off_t offset = va_arg(args, off_t);
-		return pread_f(fd, buf, count, offset);
+		ret = pread_f(fd, buf, count, offset);
 	}
 	else if ((intptr_t)fn == (intptr_t)pwrite_f) {
 		void *buf = va_arg(args, void*);
 		size_t count = va_arg(args, size_t);
 		off_t offset = va_arg(args, off_t);
-		return pwrite_f(fd, buf, count, offset);
+		ret = pwrite_f(fd, buf, count, offset);
 	}
 	else {
+#ifdef va_copy
+		va_end(args);
+#endif
 		throw EUnsupportedOperationException(__FILE__, __LINE__);
 	}
+
+#ifdef va_copy
+	va_end(args);
+#endif
+	return ret;
 }
 
 template <typename F>

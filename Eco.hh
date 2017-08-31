@@ -13,15 +13,15 @@
 #include "Efc.hh"
 
 //eco
-#include "EFiber.hh"
-#include "EFiberTimer.hh"
-#include "EFiberScheduler.hh"
-#include "EFiberBlocker.hh"
-#include "EFiberMutex.hh"
-#include "EFiberCondition.hh"
-#include "EFiberChannel.hh"
-#include "EFiberLocal.hh"
-#include "EFiberDebugger.hh"
+#include "./inc/EFiber.hh"
+#include "./inc/EFiberTimer.hh"
+#include "./inc/EFiberScheduler.hh"
+#include "./inc/EFiberBlocker.hh"
+#include "./inc/EFiberMutex.hh"
+#include "./inc/EFiberCondition.hh"
+#include "./inc/EFiberChannel.hh"
+#include "./inc/EFiberLocal.hh"
+#include "./inc/EFiberDebugger.hh"
 
 using namespace efc::eco;
 

@@ -5,8 +5,8 @@
  *      Author: cxxjava@163.com
  */
 
-#include "EFiberTimer.hh"
-#include "EFiberScheduler.hh"
+#include "../inc/EFiberTimer.hh"
+#include "../inc/EFiberScheduler.hh"
 
 namespace efc {
 namespace eco {

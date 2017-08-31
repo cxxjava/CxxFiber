@@ -8,10 +8,9 @@
 #ifndef EFIBERSCHEDULER_HH_
 #define EFIBERSCHEDULER_HH_
 
-#include "Efc.hh"
-#include "EFiber.hh"
-#include "EFiberTimer.hh"
-#include "EFiberUtil.hh"
+#include "./EFiber.hh"
+#include "./EFiberTimer.hh"
+#include "./EFiberUtil.hh"
 
 #ifdef CPP11_SUPPORT
 #include <functional>

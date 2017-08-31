@@ -8,8 +8,8 @@
 #ifndef EFIBER_CHANNEL_HH_
 #define EFIBER_CHANNEL_HH_
 
-#include "EFiber.hh"
-#include "EFiberBlocker.hh"
+#include "./EFiber.hh"
+#include "./EFiberBlocker.hh"
 
 namespace efc {
 namespace eco {

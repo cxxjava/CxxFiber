@@ -5,9 +5,9 @@
  *      Author: cxxjava@163.com
  */
 
-#include "EContext.hh"
-#include "EFiber.hh"
-#include "EFiberDebugger.hh"
+#include "./EContext.hh"
+#include "../inc/EFiber.hh"
+#include "../inc/EFiberDebugger.hh"
 
 namespace efc {
 namespace eco {

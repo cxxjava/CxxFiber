@@ -8,8 +8,7 @@
 #ifndef EFIBERCONDITION_HH_
 #define EFIBERCONDITION_HH_
 
-#include "Efc.hh"
-#include "EFiberBlocker.hh"
+#include "./EFiberBlocker.hh"
 
 namespace efc {
 namespace eco {

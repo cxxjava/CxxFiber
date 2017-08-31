@@ -5,14 +5,13 @@
  *      Author: cxxjava@163.com
  */
 
-#include "EFiberScheduler.hh"
-#include "EContext.hh"
-#include "EFiber.hh"
-#include "EIoWaiter.hh"
-#include "EFileContext.hh"
-#include "EFiberBlocker.hh"
-#include "EFileChannel.hh"
-#include "EFiberDebugger.hh"
+#include "./EContext.hh"
+#include "./EIoWaiter.hh"
+#include "./EFileContext.hh"
+#include "../inc/EFiberScheduler.hh"
+#include "../inc/EFiber.hh"
+#include "../inc/EFiberBlocker.hh"
+#include "../inc/EFiberDebugger.hh"
 
 #include <sys/resource.h>
 

@@ -1,4 +1,4 @@
-#include "main.hh"
+#include "es_main.h"
 #include "Eco.hh"
 
 #define LOG(fmt,...) ESystem::out->println(fmt, ##__VA_ARGS__)
@@ -218,7 +218,7 @@ static void test_iohooking_performance() {
 	pthread_sigmask(SIG_BLOCK, &new_mask, &old_mask);
 #endif
 
-	sp<EThreadX> thd = EThreadX::execute([](){
+	sp<EThread> thd = EThread::executeX([](){
 		show_status();
 	});
 

@@ -5,8 +5,8 @@
  *      Author: cxxjava@163.com
  */
 
-#include "EFiberMutex.hh"
-#include "EFiber.hh"
+#include "../inc/EFiberMutex.hh"
+#include "../inc/EFiber.hh"
 
 namespace efc {
 namespace eco {

@@ -5,10 +5,10 @@
  *      Author: cxxjava@163.com
  */
 
-#include "EFiberBlocker.hh"
-#include "EIoWaiter.hh"
-#include "EFiberScheduler.hh"
-#include "EFiberDebugger.hh"
+#include "./EIoWaiter.hh"
+#include "../inc/EFiberBlocker.hh"
+#include "../inc/EFiberScheduler.hh"
+#include "../inc/EFiberDebugger.hh"
 
 namespace efc {
 namespace eco {

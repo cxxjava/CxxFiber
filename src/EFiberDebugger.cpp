@@ -5,7 +5,7 @@
  *      Author: cxxjava@163.com
  */
 
-#include "EFiberDebugger.hh"
+#include "../inc/EFiberDebugger.hh"
 
 namespace efc {
 namespace eco {

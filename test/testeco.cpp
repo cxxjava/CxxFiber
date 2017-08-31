@@ -1,7 +1,5 @@
-#include "main.hh"
+#include "es_main.h"
 #include "Eco.hh"
-
-#include "EFiberUtil.hh"
 
 #include <fcntl.h>
 #include <poll.h>
@@ -161,7 +159,7 @@ static void test_c11schedule() {
 		}
 	);
 
-	sp<EThread> ths = EThreadX::execute([&]() {
+	sp<EThread> ths = EThread::executeX([&]() {
 		EFiberScheduler* scheduler = new EFiberScheduler();
 
 		scheduler->schedule(new MyFiber());
@@ -316,7 +314,7 @@ static void test_channel_multi_thread() {
 		}
 	});
 
-	sp<EThread> ths = EThreadX::execute([&]() {
+	sp<EThread> ths = EThread::executeX([&]() {
 #if BOTH_IS_FIBER
 		EFiberScheduler scheduler;
 
@@ -362,7 +360,7 @@ static void test_channel_multi_thread() {
 		LOG("end of threadx.");
 	});
 
-	sp<EThread> ths2 = EThreadX::execute([&]() {
+	sp<EThread> ths2 = EThread::executeX([&]() {
 #if BOTH_IS_THREAD
 		for (int i=0; i<RUNTIMES; i++) {
 			sp<EString> s = channel.read();
@@ -470,7 +468,7 @@ static void test_mutex_multi_thread() {
 		}
 	});
 
-	sp<EThreadX> thread = EThreadX::execute([&]() {
+	sp<EThread> thread = EThread::executeX([&]() {
 		EThread::sleep(2000);
 
 		LOG("2...");
@@ -507,7 +505,7 @@ static void test_mutex_multi_thread() {
 		}
 	});
 
-	sp<EThreadX> thread = EThreadX::execute([&]() {
+	sp<EThread> thread = EThread::executeX([&]() {
 		sleep(2);
 
 		LOG("2...");
@@ -1357,15 +1355,15 @@ MAIN_IMPL(testeco) {
 //			test_hook_signal(); //todo:
 //			test_hook_fcntl();
 //			test_hook_nonblocking();
-//			test_not_hook_file();
+//			test_hook_read_write();
 //			test_hook_pipe();
 //			test_hook_kqueue();
 //			test_hook_gethostbyname();
-//			test_nio();
+//			test_hook_sendfile();
 			test_not_hook_file();
 //			test_nio();
 //			test_sslsocket();
-//			test_nio_in_fiber();
+//			test_efc_in_fiber();
 
 //		} while (++i < 5);
 		} while (1);

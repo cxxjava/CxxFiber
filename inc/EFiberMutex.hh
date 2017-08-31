@@ -8,7 +8,7 @@
 #ifndef EFIBERMUTEX_HH_
 #define EFIBERMUTEX_HH_
 
-#include "EFiberBlocker.hh"
+#include "./EFiberBlocker.hh"
 
 namespace efc {
 namespace eco {

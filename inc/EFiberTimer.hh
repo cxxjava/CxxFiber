@@ -8,8 +8,7 @@
 #ifndef EFIBERTIMER_HH_
 #define EFIBERTIMER_HH_
 
-#include "Efc.hh"
-#include "EFiber.hh"
+#include "./EFiber.hh"
 
 namespace efc {
 namespace eco {
