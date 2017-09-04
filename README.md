@@ -1,6 +1,6 @@
 # CxxFiber
 
-##C++ fiber library
+## C++ fiber library
 
 <br/>
 *chinese version: [简体中文](README.zh_cn.md)*
@@ -13,13 +13,13 @@
   - [TODO](#todo)
   - [Support](#support)
 
-####Characteristics
+#### Characteristics
 * Cross platform: support Linux32/64, OSX64, support C++98;
 * High performance: network performance is strong, support massive co process, since then no C1000K problem;
 * Easy development: synchronous code, API elegant simplicity and efficient development;
 * Mixed programming support process, threads and coroutines mixed use, carry out their duties: 
 
-####Example
+#### Example
   `c++:`
   
   ```
@@ -83,7 +83,7 @@
 more examples:  
 [testeco.cpp](test/testeco.cpp)  
 
-####Performance
+#### Performance
 `software environment:`
 
 @see c++ example code: [benchmark.cpp](test/benchmark.cpp);
@@ -102,12 +102,12 @@ Total Number of Cores:	2
 
 ![benchmark](img/benchmark.gif)
 
-####Dependency
+#### Dependency
 `CxxFiber` is based on [CxxJDK](https://github.com/cxxjava/cxxjdk).  
 
-####TODO
+#### TODO
     win64 support.
 
-####Support
+#### Support
 Email: [cxxjava@163.com](mailto:cxxjava@163.com)
 
