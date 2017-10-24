@@ -41,19 +41,15 @@ endif
 
 CCOMPILE = gcc
 CPPCOMPILE = g++
-INCLUDEDIR = -I../../CxxJDK/inc \
-	-I../../CxxJDK/inc/comm \
-	-I../../CxxJDK/inc/efc \
-	-I../../CxxJDK/inc/efc/concurrent \
-	-I../../CxxJDK/inc/efc/cpp11 \
-	-I../../CxxJDK/inc/efc/nio \
-	-I../../CxxJDK/inc/libc \
+INCLUDEDIR = -I../../efc \
+	-I../../CxxJDK/efc \
 	-I../inc \
 	-I../ \
+	-I/usr/local/Cellar/openssl/1.0.2g/include \
 
 LINK = g++
 LINKOPTION = -std=$(CPPSTD) -g
-LIBDIRS = -L../../CxxJDK/lib/$(LIBDIR)
+LIBDIRS = -L../../efc/lib/$(LIBDIR) -L../../CxxJDK/lib/$(LIBDIR)
 APPENDLIB = 
 
 BASE_OBJS =  \
