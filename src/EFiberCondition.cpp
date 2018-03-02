@@ -24,7 +24,7 @@ void EFiberCondition::signal() {
 }
 
 void EFiberCondition::signalAll() {
-	sp<EConcurrentIterator<EFiberBlocker> > iter = waiters.iterator();
+	sp<EIterator<sp<EFiberBlocker> > > iter = waiters.iterator();
 	while (iter->hasNext()) {
 		sp<EFiberBlocker> fb = iter->next();
 		fb->wakeUp();

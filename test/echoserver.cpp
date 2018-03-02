@@ -3,7 +3,7 @@
 
 #include <sys/resource.h>
 
-#define LOG(fmt,...) ESystem::out->println(fmt, ##__VA_ARGS__)
+#define LOG(fmt,...) ESystem::out->printfln(fmt, ##__VA_ARGS__)
 
 #define FIBER_THREADS 4
 #define MAX_CONNECTIONS 2

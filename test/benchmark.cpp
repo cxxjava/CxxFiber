@@ -1,7 +1,7 @@
 #include "es_main.h"
 #include "Eco.hh"
 
-#define LOG(fmt,...) ESystem::out->println(fmt, ##__VA_ARGS__)
+#define LOG(fmt,...) ESystem::out->printfln(fmt, ##__VA_ARGS__)
 
 //=============================================================================
 //linux: per second op times: 10638297.872340

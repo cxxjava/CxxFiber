@@ -134,8 +134,8 @@ void EFiber::yield() {
 	}
 }
 
-EStringBase EFiber::toString() {
-	return EStringBase::formatOf("Fiber[%s,%d,%s,%d]", getName(), getId(), StateName[state], stackSize);
+EString EFiber::toString() {
+	return EString::formatOf("Fiber[%s,%d,%s,%d]", getName(), getId(), StateName[state], stackSize);
 }
 
 void EFiber::sleep(llong millis) {
@@ -149,6 +149,11 @@ void EFiber::sleep(llong millis) {
 		llong id = ioWaiter->setupTimer(millis, self);
 		ioWaiter->swapOut(self);
 		ioWaiter->cancelTimer(id);
+	}
+
+	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
+	if (scheduler && scheduler->isInterrupted()) {
+		throw EInterruptedException(__FILE__, __LINE__, "Interrupted.");
 	}
 }
 

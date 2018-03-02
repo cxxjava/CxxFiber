@@ -582,6 +582,16 @@ void EFiberScheduler::joinWithThreadBind(EA<SchedulerStub*>* schedulerStubs,
 
 void EFiberScheduler::interrupt() {
 	interrupted = true;
+
+	//active all ioWatier.
+	if (threadNums > 1 && schedulerStubs) {
+		for (int i=0; i<schedulerStubs->length(); i++) {
+			schedulerStubs->getAt(i)->ioWaiter.signal();
+		}
+	} else {
+		EIoWaiter* iw = currentIoWaiter();
+		if (iw) iw->signal();
+	}
 }
 
 boolean EFiberScheduler::isInterrupted() {

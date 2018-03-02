@@ -21,7 +21,7 @@
 #include <sys/event.h>
 #endif
 
-#define LOG(fmt,...) ESystem::out->println(fmt, ##__VA_ARGS__)
+#define LOG(fmt,...) ESystem::out->printfln(fmt, ##__VA_ARGS__)
 
 static const char* g_ip = "0.0.0.0";
 static const uint16_t g_port = 8888;
@@ -573,11 +573,21 @@ static void test_sleep() {
 	EFiberScheduler scheduler;
 
 	scheduler.schedule([]() {
-		LOG("sleep 1 second.");
-		EFiber::sleep(1000);
+		LOG("sleep 10 second.");
+		try {
+			EFiber::sleep(10000);
+		} catch (EInterruptedException& e) {
+			e.printStackTrace();
+		}
 	});
 
-	scheduler.join();
+	scheduler.schedule([&scheduler]() {
+		LOG("sleep 1 second.");
+		EFiber::sleep(1000);
+		scheduler.interrupt();
+	});
+
+	scheduler.join(4);
 #endif
 
 	LOG("end of test_sleep().");
@@ -1158,7 +1168,7 @@ static void test_not_hook_file() {
 }
 
 static void test_nio() {
-	ESocketChannel* socketChannel = ESocketChannel::open();
+	sp<ESocketChannel> socketChannel = ESocketChannel::open();
 	socketChannel->configureBlocking(false );
 	ESelector* selector = ESelector::open();
 	socketChannel->register_(selector, ESelectionKey::OP_CONNECT);
@@ -1166,10 +1176,10 @@ static void test_nio() {
 //	EInetSocketAddress SERVER_ADDRESS("10.211.55.8", 8899);
 	socketChannel->connect(&SERVER_ADDRESS);
 
-	ESet<ESelectionKey*>* selectionKeys;
-	sp<EIterator<ESelectionKey*> > iterator;
-	ESelectionKey* selectionKey;
-	ESocketChannel* client;
+	ESet<sp<ESelectionKey> >* selectionKeys;
+	sp<EIterator<sp<ESelectionKey> > > iterator;
+	sp<ESelectionKey> selectionKey;
+	sp<ESocketChannel> client;
 	int count = 0;
 	EIOByteBuffer sendbuffer(512);
 	EIOByteBuffer receivebuffer(512);
@@ -1185,7 +1195,7 @@ static void test_nio() {
 			selectionKey = iterator->next();
 			if (selectionKey->isConnectable()) {
 				LOG("client connect");
-				client = (ESocketChannel*) selectionKey->channel();
+				client = dynamic_pointer_cast<ESocketChannel>(selectionKey->channel());
 				if (client->isConnectionPending()) {
 					client->finishConnect();
 					LOG("connect finished!");
@@ -1197,7 +1207,7 @@ static void test_nio() {
 				}
 				client->register_(selector, ESelectionKey::OP_READ);
 			} else if (selectionKey->isReadable()) {
-				client = (ESocketChannel*) selectionKey->channel();
+				client = dynamic_pointer_cast<ESocketChannel>(selectionKey->channel());
 				receivebuffer.clear();
 				try {
 					count = client->read(&receivebuffer);
@@ -1218,7 +1228,6 @@ static void test_nio() {
 	delete selector;
 
 	socketChannel->close();
-	delete socketChannel;
 }
 
 static void test_sslsocket() {
@@ -1294,9 +1303,9 @@ static void test_efc_in_fiber() {
 
 	scheduler.schedule([&]() {
 		while (true) {
-//			test_nio();
+			test_nio();
 //			test_sslsocket();
-			test_sslserversocket();
+//			test_sslserversocket();
 		}
 	});
 
@@ -1360,10 +1369,10 @@ MAIN_IMPL(testeco) {
 //			test_hook_kqueue();
 //			test_hook_gethostbyname();
 //			test_hook_sendfile();
-			test_not_hook_file();
+//			test_not_hook_file();
 //			test_nio();
 //			test_sslsocket();
-//			test_efc_in_fiber();
+			test_efc_in_fiber();
 
 //		} while (++i < 5);
 		} while (1);
