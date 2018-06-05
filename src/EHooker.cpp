@@ -670,59 +670,121 @@ int connect(int fd, const struct sockaddr *addr, socklen_t addrlen)
 
 int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
 {
+#ifdef CPP11_SUPPORT
+	return EHooker::comm_io_on_fiber(accept_f, "accept", POLLIN, sockfd, sockfd, addr, addrlen);
+#else
 	return EHooker::comm_io_on_fiber(accept_f, "accept", POLLIN, sockfd, addr, addrlen);
+#endif
 }
 
 ssize_t read(int fd, void *buf, size_t count)
 {
+#ifdef CPP11_SUPPORT
+	return EHooker::comm_io_on_fiber(read_f, "read", POLLIN, fd, fd, buf, count);
+#else
 	return EHooker::comm_io_on_fiber(read_f, "read", POLLIN, fd, buf, count);
+#endif
 }
 
 ssize_t readv(int fd, const struct iovec *iov, int iovcnt)
 {
+#ifdef CPP11_SUPPORT
+	return EHooker::comm_io_on_fiber(readv_f, "readv", POLLIN, fd, fd, iov, iovcnt);
+#else
 	return EHooker::comm_io_on_fiber(readv_f, "readv", POLLIN, fd, iov, iovcnt);
+#endif
 }
 
 ssize_t recv(int sockfd, void *buf, size_t len, int flags)
 {
+#ifdef CPP11_SUPPORT
+	return EHooker::comm_io_on_fiber(recv_f, "recv", POLLIN, sockfd, sockfd, buf, len, flags);
+#else
 	return EHooker::comm_io_on_fiber(recv_f, "recv", POLLIN, sockfd, buf, len, flags);
+#endif
 }
 
 ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags,
         struct sockaddr *src_addr, socklen_t *addrlen)
 {
+#ifdef CPP11_SUPPORT
+	return EHooker::comm_io_on_fiber(recvfrom_f, "recvfrom", POLLIN, sockfd, sockfd, buf, len, flags, src_addr, addrlen);
+#else
 	return EHooker::comm_io_on_fiber(recvfrom_f, "recvfrom", POLLIN, sockfd, buf, len, flags, src_addr, addrlen);
+#endif
 }
 
 ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags)
 {
+#ifdef CPP11_SUPPORT
+	return EHooker::comm_io_on_fiber(recvmsg_f, "recvmsg", POLLIN, sockfd, sockfd, msg, flags);
+#else
 	return EHooker::comm_io_on_fiber(recvmsg_f, "recvmsg", POLLIN, sockfd, msg, flags);
+#endif
 }
 
 ssize_t write(int fd, const void *buf, size_t count)
 {
+#ifdef CPP11_SUPPORT
+	return EHooker::comm_io_on_fiber(write_f, "write", POLLOUT, fd, fd, buf, count);
+#else
 	return EHooker::comm_io_on_fiber(write_f, "write", POLLOUT, fd, buf, count);
+#endif
 }
 
 ssize_t writev(int fd, const struct iovec *iov, int iovcnt)
 {
+#ifdef CPP11_SUPPORT
+	return EHooker::comm_io_on_fiber(writev_f, "writev", POLLOUT, fd, fd, iov, iovcnt);
+#else
 	return EHooker::comm_io_on_fiber(writev_f, "writev", POLLOUT, fd, iov, iovcnt);
+#endif
 }
 
 ssize_t send(int sockfd, const void *buf, size_t len, int flags)
 {
+#ifdef CPP11_SUPPORT
+	return EHooker::comm_io_on_fiber(send_f, "send", POLLOUT, sockfd, sockfd, buf, len, flags);
+#else
 	return EHooker::comm_io_on_fiber(send_f, "send", POLLOUT, sockfd, buf, len, flags);
+#endif
 }
 
 ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
         const struct sockaddr *dest_addr, socklen_t addrlen)
 {
+#ifdef CPP11_SUPPORT
+	return EHooker::comm_io_on_fiber(sendto_f, "sendto", POLLOUT, sockfd, sockfd, buf, len, flags, dest_addr, addrlen);
+#else
 	return EHooker::comm_io_on_fiber(sendto_f, "sendto", POLLOUT, sockfd, buf, len, flags, dest_addr, addrlen);
+#endif
 }
 
 ssize_t sendmsg(int sockfd, const struct msghdr *msg, int flags)
 {
+#ifdef CPP11_SUPPORT
+	return EHooker::comm_io_on_fiber(sendmsg_f, "sendmsg", POLLOUT, sockfd, sockfd, msg, flags);
+#else
 	return EHooker::comm_io_on_fiber(sendmsg_f, "sendmsg", POLLOUT, sockfd, msg, flags);
+#endif
+}
+
+ssize_t pread(int fd, void *buf, size_t count, off_t offset)
+{
+#ifdef CPP11_SUPPORT
+	return EHooker::comm_io_on_fiber(pread_f, "pread", POLLIN, fd, fd, buf, count, offset);
+#else
+	return EHooker::comm_io_on_fiber(pread_f, "pread", POLLIN, fd, buf, count, offset);
+#endif
+}
+
+ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset)
+{
+#ifdef CPP11_SUPPORT
+	return EHooker::comm_io_on_fiber(pwrite_f, "pwrite", POLLOUT, fd, fd, buf, count, offset);
+#else
+	return EHooker::comm_io_on_fiber(pwrite_f, "pwrite", POLLOUT, fd, buf, count, offset);
+#endif
 }
 
 size_t fread(void *ptr, size_t size, size_t nitems, FILE *stream)
@@ -733,16 +795,6 @@ size_t fread(void *ptr, size_t size, size_t nitems, FILE *stream)
 size_t fwrite(const void *ptr, size_t size, size_t nitems, FILE *stream)
 {
 	return EHooker::comm_io_on_fiber(fwrite_f, "fwrite", POLLOUT, eso_fileno(stream), ptr, size, nitems, stream);
-}
-
-ssize_t pread(int fd, void *buf, size_t count, off_t offset)
-{
-	return EHooker::comm_io_on_fiber(pread_f, "pread", POLLIN, fd, buf, count, offset);
-}
-
-ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset)
-{
-	return EHooker::comm_io_on_fiber(pwrite_f, "pwrite", POLLOUT, fd, buf, count, offset);
 }
 
 //=============================================================================
@@ -934,7 +986,7 @@ int kevent(int kq, const struct kevent *changelist, int nchanges,
 		return kevent_f(kq, changelist, nchanges, eventlist, nevents, timeout);
 	}
 
-	if (timeout && timeout->tv_sec == 0 && timeout->tv_nsec == 0) {
+	if ((timeout && timeout->tv_sec == 0 && timeout->tv_nsec == 0) || !eventlist || nevents == 0) {
 		// try at immediately.
 		return kevent_f(kq, changelist, nchanges, eventlist, nevents, timeout);
 	}
@@ -978,7 +1030,7 @@ int kevent64(int kq, const struct kevent64_s *changelist, int nchanges,
 		return kevent64_f(kq, changelist, nchanges, eventlist, nevents, flags, timeout);
 	}
 
-	if (timeout && timeout->tv_sec == 0 && timeout->tv_nsec == 0) {
+	if ((timeout && timeout->tv_sec == 0 && timeout->tv_nsec == 0) || !eventlist || nevents == 0) {
 		// try once at immediately.
 		return kevent64_f(kq, changelist, nchanges, eventlist, nevents, flags, timeout);
 	}
@@ -1080,6 +1132,74 @@ llong EHooker::interruptEscapedTime() {
 	return interrupt_escaped_time;
 }
 
+#ifdef CPP11_SUPPORT
+
+template <typename F, typename ... Args>
+ssize_t EHooker::comm_io_on_fiber(F fn, const char* name, int event, int fd, Args&&... args) {
+	EHooker::_initzz_();
+
+	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
+	if (!scheduler || !EFileContext::isStreamFile(fd)) {
+		return fn(std::forward<Args>(args)...);
+	}
+
+	sp<EFileContext> fdctx = scheduler->getFileContext(fd);
+	if (!fdctx) {
+		return -1;
+	}
+
+	boolean isUNB = fdctx->isUserNonBlocked();
+	if (isUNB) {
+		return fn(std::forward<Args>(args)...);
+	}
+
+	ssize_t ret = -1;
+
+	if ((event & POLLOUT) == POLLOUT) {
+		// try once at immediately.
+		ret = fn(std::forward<Args>(args)...);
+		if (ret >= 0) { //success?
+			goto SUCCESS;
+		}
+	}
+
+	// try io wait.
+	{
+		int milliseconds = (event == POLLIN) ? fdctx->getRecvTimeout() : fdctx->getSendTimeout();
+		if (milliseconds == 0) milliseconds = -1;
+
+RETRY:
+		pollfd pfd;
+		pfd.fd = fd;
+		pfd.events = event;
+		pfd.revents = 0;
+
+		ret = poll(&pfd, 1, milliseconds);
+		if (ret == 1) { //success
+			ret = fn(std::forward<Args>(args)...);
+			if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+				goto RETRY;
+			}
+	    } else if (ret == 0) { //timeout
+	        ret = -1;
+	        errno = isUNB ? EAGAIN : ETIMEDOUT;
+	    }
+	}
+
+SUCCESS:
+	if (ret >= 0 && ((intptr_t)fn == (intptr_t)accept_f)) {
+		// if listen socket is non-blocking then accepted socket also non-blocking,
+		// we need reset it to back.
+		int socket = (int)ret;
+		int flags = fcntl_f(socket, F_GETFL);
+		fcntl_f(socket, F_SETFL, flags & ~O_NONBLOCK);
+	}
+
+	return ret;
+}
+
+#else //!
+
 template <typename F>
 static ssize_t call_fn(EFileContext* fdctx, F fn, int fd, va_list _args) {
 	ssize_t ret = -1;
@@ -1094,7 +1214,7 @@ static ssize_t call_fn(EFileContext* fdctx, F fn, int fd, va_list _args) {
 		struct sockaddr* addr = va_arg(args, struct sockaddr*);
 		socklen_t* addrlen = va_arg(args, socklen_t*);
 		int socket = accept_f(fd, addr, addrlen);
-		if (fdctx != null && !fdctx->isUserNonBlocked()) {
+		if (socket >= 0 && fdctx != null && !fdctx->isUserNonBlocked()) {
 			// if listen socket is non-blocking then accepted socket also non-blocking,
 			// we need reset it to back.
 			int flags = fcntl_f(socket, F_GETFL);
@@ -1260,6 +1380,8 @@ RETRY:
 	va_end(args);
 	return ret;
 }
+
+#endif //!CPP11_SUPPORT
 
 } /* namespace eco */
 } /* namespace efc */
