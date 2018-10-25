@@ -205,6 +205,20 @@ protected:
 	void swapOut();
 };
 
+#ifdef CPP11_SUPPORT
+class EFiberTarget: public EFiber {
+public:
+	EFiberTarget(std::function<void()> f) {
+		this->f = f;
+	}
+	virtual void run() {
+		f();
+	}
+private:
+	std::function<void()> f;
+};
+#endif
+
 } /* namespace eco */
 } /* namespace efc */
 #endif /* EFIBER_HH_ */

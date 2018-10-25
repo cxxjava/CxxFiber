@@ -22,7 +22,7 @@ public:
 	DECLARE_STATIC_INITZZ
 
 public:
-	static boolean isInterrupted(boolean ClearInterrupted);
+	static boolean isInterrupted();
 	static llong interruptEscapedTime();
 
 #ifdef CPP11_SUPPORT

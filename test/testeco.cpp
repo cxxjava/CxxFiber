@@ -21,6 +21,8 @@
 #include <sys/event.h>
 #endif
 
+#ifdef CPP11_SUPPORT
+
 #define LOG(fmt,...) ESystem::out->printfln(fmt, ##__VA_ARGS__)
 
 static const char* g_ip = "0.0.0.0";
@@ -134,19 +136,17 @@ static void go_func_test2(EFiberScheduler* scheduler) {
 }
 
 static void test_c11schedule() {
-	EFiberScheduler* scheduler = new EFiberScheduler();
-	scheduler->schedule(new MyFiber());
-	scheduler->schedule(new MyFiber());
-	scheduler->schedule(new MyFiber());
-	scheduler->schedule(new MyFiber());
+	EFiberScheduler scheduler;
+	scheduler.schedule(new MyFiber());
+	scheduler.schedule(new MyFiber());
+	scheduler.schedule(new MyFiber());
+	scheduler.schedule(new MyFiber());
 
-#ifdef CPP11_SUPPORT
+	scheduler.schedule(go_func_test1);
 
-	scheduler->schedule(go_func_test1);
+	scheduler.schedule(std::bind(&go_func_test2, &scheduler));
 
-	scheduler->schedule(std::bind(&go_func_test2, scheduler));
-
-	scheduler->schedule(
+	scheduler.schedule(
 		[](){
 			EFiber* fiber = EFiber::currentFiber();
 			LOG("fiber2=%s", fiber->toString().c_str());
@@ -160,31 +160,22 @@ static void test_c11schedule() {
 	);
 
 	sp<EThread> ths = EThread::executeX([&]() {
-		EFiberScheduler* scheduler = new EFiberScheduler();
+		EFiberScheduler scheduler;
 
-		scheduler->schedule(new MyFiber());
+		scheduler.schedule(new MyFiber());
 
-		scheduler->join();
-
-		delete scheduler;
+		scheduler.join();
 	});
 
 	// mast be before thread join().
-	scheduler->join();
+	scheduler.join();
 
 	ths->join();
 
-	delete scheduler;
-
-	LOG("fiber2 finished!");
-#else
-	scheduler->join();
-	LOG("fiber1 finished!");
-#endif
+	LOG("fiber finished!");
 }
 
 static void test_nesting() {
-#ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 	scheduler.schedule([&]() {
 		char ss[100];
@@ -209,13 +200,11 @@ static void test_nesting() {
 		}
 	});
 	scheduler.join(3);
-#endif
 
 	LOG("end of test_nesting().");
 }
 
 static void test_channel() {
-#ifdef CPP11_SUPPORT
 	EFiberChannel<EString> channel(0);
 	EFiberScheduler scheduler;
 	scheduler.schedule([&]() {
@@ -234,11 +223,9 @@ static void test_channel() {
 		}
 	});
 	scheduler.join();
-#endif
 }
 
 static void test_channel_one_thread() {
-#ifdef CPP11_SUPPORT
 	EFiberChannel<EString> channel(0);
 	EFiberScheduler scheduler;
 	scheduler.schedule([&]() {
@@ -274,16 +261,14 @@ static void test_channel_one_thread() {
 		}
 	});
 	scheduler.join();
-#endif
 }
 
 #define RUNTIMES 100
-#define FLIP_READ_WRITE 1
+#define FLIP_READ_WRITE 0
 #define BOTH_IS_FIBER 0
 #define BOTH_IS_THREAD 1
 
 static void test_channel_multi_thread() {
-#ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 
 	// channel.
@@ -383,13 +368,11 @@ static void test_channel_multi_thread() {
 	scheduler.join(4);
 	ths->join();
 	ths2->join();
-#endif
 
 	LOG("end of test_channel_multi_thread().");
 }
 
 static void test_mutex() {
-#ifdef CPP11_SUPPORT
 	EFiberMutex mutex;
 	EFiberScheduler scheduler;
 
@@ -436,11 +419,9 @@ static void test_mutex() {
 	scheduler.join();
 
 	LOG("end of test_mutex().");
-#endif
 }
 
 static void test_mutex_multi_thread() {
-#ifdef CPP11_SUPPORT
 	EFiberMutex mutex;
 	EFiberScheduler scheduler;
 
@@ -532,11 +513,9 @@ static void test_mutex_multi_thread() {
 	thread->join();
 
 	LOG("end of test_mutex_multi_thread().");
-#endif
 }
 
 static void test_condition() {
-#ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 	EFiberCondition condition;
 
@@ -563,13 +542,11 @@ static void test_condition() {
 #endif
 
 	scheduler.join();
-#endif
 
 	LOG("end of test_condition().");
 }
 
 static void test_sleep() {
-#ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 
 	scheduler.schedule([]() {
@@ -588,7 +565,6 @@ static void test_sleep() {
 	});
 
 	scheduler.join(4);
-#endif
 
 	LOG("end of test_sleep().");
 }
@@ -601,7 +577,6 @@ static void fiber_destroyed_callback(void* data) {
 }
 
 static void test_local() {
-#ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 	EFiberLocal<EString*> localValue;
 	EFiberLocal<EString*> localValue2(fiber_destroyed_callback);
@@ -621,13 +596,11 @@ static void test_local() {
 	}
 
 	scheduler.join();
-#endif
 
 	LOG("end of test_local().");
 }
 
 static void test_hook_connect1() {
-#ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 
 	scheduler.schedule([]() {
@@ -649,11 +622,9 @@ static void test_hook_connect1() {
 	});
 
 	scheduler.join();
-#endif
 }
 
 static void test_hook_connect2() {
-#ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 
 	for (int i=0; i<100; i++) {
@@ -677,11 +648,9 @@ static void test_hook_connect2() {
 	}
 
 	scheduler.join(3);
-#endif
 }
 
 static void test_hook_poll() {
-#ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 
 	scheduler.schedule([]() {
@@ -692,12 +661,10 @@ static void test_hook_poll() {
 	});
 
 	scheduler.join();
-#endif
 }
 
 #ifdef TEST_HOOK_SELECT
 static void test_hook_select() {
-#ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 
 	scheduler.schedule([]() {
@@ -731,12 +698,10 @@ static void test_hook_select() {
 	});
 
 	scheduler.join();
-#endif
 }
 #endif
 
 static void test_hook_sleep() {
-#ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 
 	scheduler.schedule([]() {
@@ -756,7 +721,6 @@ static void test_hook_sleep() {
 	}
 
 	scheduler.join();
-#endif
 }
 
 static void sigfunc(int sig_no) {
@@ -771,7 +735,6 @@ static void test_hook_signal() {
 
 	signal(SIGINT, sigfunc);
 
-#ifdef CPP11_SUPPORT
 	scheduler.schedule([]() {
 		while (1) {
 			sleep(10);
@@ -780,7 +743,6 @@ static void test_hook_signal() {
 	});
 
 	scheduler.join();
-#endif
 }
 
 static void test_hook_fcntl() {
@@ -796,7 +758,6 @@ static void test_hook_fcntl() {
 	LOG("ret=%d", ret);
 	close(fd);
 
-#ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 	scheduler.schedule([&]() {
 		struct flock _lock;
@@ -812,7 +773,6 @@ static void test_hook_fcntl() {
 		close(fd);
 	});
 	scheduler.join();
-#endif
 }
 
 static void test_hook_nonblocking() {
@@ -836,7 +796,6 @@ static void test_hook_nonblocking() {
 		LOG("O_NONBLOCK");
 	}
 
-#ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 	scheduler.schedule([&]() {
 		fcntl(fd, F_SETFL, flags | O_NONBLOCK);
@@ -873,7 +832,6 @@ static void test_hook_nonblocking() {
 		//close(fd);
 	});
 	scheduler.join();
-#endif
 
 	flags = ::fcntl(fd, F_GETFL);
 	LOG("flags=%d", flags);
@@ -889,7 +847,6 @@ static void test_hook_read_write() {
 
 #define MULTITHREAD 1
 
-#ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 #if MULTITHREAD
 	for (int i=0; i<100; i++) {
@@ -938,11 +895,9 @@ static void test_hook_read_write() {
 #else
 	scheduler.join();
 #endif
-#endif
 }
 
 static void test_hook_pipe() {
-#ifdef CPP11_SUPPORT
 	es_pipe_t* pipe = eso_pipe_create();
 
 	EFiberScheduler scheduler;
@@ -961,7 +916,6 @@ static void test_hook_pipe() {
 	scheduler.join();
 
 	eso_pipe_destroy(&pipe);
-#endif
 }
 
 static void test_timer() {
@@ -984,7 +938,6 @@ static void test_timer() {
 	sp<EFiberTimer> t1 = scheduler.addtimer(new Timer1(), 3000, 1000);
 	sp<EFiberTimer> t2 = scheduler.addtimer(new Timer2(), 1000, 1000);
 
-#ifdef CPP11_SUPPORT
 	scheduler.schedule([&]() {
 		EFiber::sleep(10000);
 		t2->cancel();
@@ -995,12 +948,11 @@ static void test_timer() {
 	scheduler.addtimer([]() {
 		LOG("www");
 	}, 1, 2000);
-#endif
+
 	scheduler.join();
 }
 
 static void test_hook_kqueue() {
-#ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 	scheduler.schedule([&]() {
 
@@ -1046,11 +998,9 @@ static void test_hook_kqueue() {
 	});
 
 	scheduler.join();
-#endif
 }
 
 static void test_hook_gethostbyname() {
-#ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 
 	scheduler.schedule([&]() {
@@ -1075,7 +1025,6 @@ static void test_hook_gethostbyname() {
 	});
 
 	scheduler.join();
-#endif
 }
 
 static void test_hook_sendfile() {
@@ -1154,7 +1103,6 @@ static void test_hook_sendfile() {
 }
 
 static void test_not_hook_file() {
-#ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 	scheduler.schedule([&]() {
 		es_file_t* pfile = eso_fopen("./test_file.txt", "r+");
@@ -1164,7 +1112,6 @@ static void test_not_hook_file() {
 //		::close(fd);
 	});
 	scheduler.join();
-#endif
 }
 
 static void test_nio() {
@@ -1234,8 +1181,12 @@ static void test_sslsocket() {
 	char buffer[4096];
 	int ret;
 	ESSLSocket *socket = new ESSLSocket();
+	socket->setSSLParameters(
+			"./certs/client/client-cert.pem",
+			"./certs/client/client-key.pem",
+			null);
 	socket->setReceiveBufferSize(10240);
-	socket->connect("www.baidu.com", 443, 3000);
+	socket->connect("localhost", 8443, 3000);
 	socket->setSoTimeout(3000);
 	char *get_str = "GET / HTTP/1.1\r\n"
 					"Accept: image/gif, image/jpeg, image/pjpeg, image/pjpeg, application/x-shockwave-flash, application/msword, application/vnd.ms-excel, application/vnd.ms-powerpoint, application/xaml+xml, application/x-ms-xbap, application/x-ms-application, */*\r\n"
@@ -1264,10 +1215,10 @@ static void test_sslsocket() {
 
 static void test_sslserversocket() {
 	ESSLServerSocket *serverSocket = new ESSLServerSocket();
-	serverSocket->setSSLParameters(null,
-			"./certs/tests-cert.pem",
-			"./certs/tests-key.pem",
-			null, null);
+	serverSocket->setSSLParameters(
+			"./certs/server/server-cert.pem",
+			"./certs/server/server-key.pem",
+			null, "./certs/ca/ca-cert.pem");
 	serverSocket->setReuseAddress(true);
 	serverSocket->bind(8443);
 	LOG("serverSocket=%s", serverSocket->toString().c_str());
@@ -1276,6 +1227,7 @@ static void test_sslserversocket() {
 	while (count < 10) {
 		try {
 			ESSLSocket *clientSocket = serverSocket->accept();
+			if (!clientSocket) continue;
 			count++;
 			EInetSocketAddress *isar = clientSocket->getRemoteSocketAddress();
 			EInetSocketAddress *isal = clientSocket->getLocalSocketAddress();
@@ -1286,6 +1238,9 @@ static void test_sslserversocket() {
 				eso_memset(buffer, 0, sizeof(buffer) - 1);
 				sis->read(buffer, sizeof(buffer));
 				LOG("socket read=[%s]", buffer);
+
+				EOutputStream *sos = clientSocket->getOutputStream();
+				sos->write("HTTP/1.1 200 OK\r\nContent-Length: 11\r\nContent-Type: text/html\r\n\r\nHello,world");
 			} catch (EIOException &e) {
 				LOG("read e=%s", e.toString().c_str());
 			}
@@ -1298,14 +1253,13 @@ static void test_sslserversocket() {
 }
 
 static void test_efc_in_fiber() {
-#ifdef CPP11_SUPPORT
 	EFiberScheduler scheduler;
 
 	scheduler.schedule([&]() {
 		while (true) {
-			test_nio();
+//			test_nio();
 //			test_sslsocket();
-//			test_sslserversocket();
+			test_sslserversocket();
 		}
 	});
 
@@ -1326,7 +1280,105 @@ static void test_efc_in_fiber() {
 	});
 
 	scheduler.join();
-#endif
+}
+
+static void test_balance() {
+	EFiberScheduler scheduler;
+
+	scheduler.schedule([&]() {
+		EFiber* fiber = EFiber::currentFiber();
+		LOG("childFiber0 index = %d", fiber->getThreadIndex());
+
+		sp<EFiber> childFiber1 = new EFiberTarget([&]() {
+			EFiber* fiber = EFiber::currentFiber();
+			while (true) {
+				sleep(1);
+				LOG("childFiber3 index = %d", fiber->getThreadIndex());
+			}
+		});
+		childFiber1->setTag(1);
+		scheduler.schedule(childFiber1);
+
+		sp<EFiber> childFiber2 = new EFiberTarget([]() {
+			EFiber* fiber = EFiber::currentFiber();
+			while (true) {
+				sleep(1);
+				LOG("childFiber4 index = %d", fiber->getThreadIndex());
+			}
+		});
+		childFiber2->setTag(2);
+		scheduler.scheduleInheritThread(childFiber2);
+	});
+
+	scheduler.schedule([&]() {
+		EFiber* fiber = EFiber::currentFiber();
+		while (true) {
+			sleep(1);
+			LOG("childFiber1 index = %d", fiber->getThreadIndex());
+			EFiber::yield();
+		}
+	});
+
+	scheduler.schedule([&]() {
+		EFiber* fiber = EFiber::currentFiber();
+		while (true) {
+			sleep(5);
+			LOG("childFiber2 index = %d", fiber->getThreadIndex());
+			EFiber::yield();
+		}
+	});
+
+//	scheduler.setBalanceCallback([](EFiber* fiber, int threadNums) {
+//		long tag = fiber->getTag();
+//		LOG("fiber tag = %ld", tag);
+//		if (tag == 1) {
+//			return 1;
+//		}
+//		if (tag == 2) {
+//			return 2;
+//		}
+//		return 0;
+//	});
+
+	scheduler.setScheduleCallback([](int threadIndex,
+			EFiberScheduler::SchedulePhase schedulePhase, EThread* currentThread,
+			EFiber* currentFiber) {
+		switch (schedulePhase) {
+		case EFiberScheduler::SCHEDULE_BEFORE: {
+			if (currentFiber) {
+				LOG("currentFiber index = %d", currentFiber->getThreadIndex());
+			}
+		break;
+		}
+		}
+	});
+
+	scheduler.join(4);
+}
+
+static void test_hook_dso() {
+	EFiberScheduler scheduler;
+
+	scheduler.schedule([&]() {
+		EFiber* fiber = EFiber::currentFiber();
+		typedef void (libtest_func)();  //from libtest.dylib
+		es_dso_t *dso = eso_dso_load("../eco/test/libtest.so");
+		libtest_func* libtest = (libtest_func*)eso_dso_sym(dso, "libtest");
+		for (int i=0; i<10; i++) {
+			libtest();  //calls puts() from libSystem.B.dylib
+		}
+		eso_dso_unload(&dso);
+	});
+
+	scheduler.schedule([&]() {
+		EFiber* fiber = EFiber::currentFiber();
+		while (true) {
+			sleep(1);
+			LOG("childFiber index = %d", fiber->getThreadIndex());
+		}
+	});
+
+	scheduler.join();
 }
 
 MAIN_IMPL(testeco) {
@@ -1372,10 +1424,12 @@ MAIN_IMPL(testeco) {
 //			test_not_hook_file();
 //			test_nio();
 //			test_sslsocket();
-			test_efc_in_fiber();
+//			test_efc_in_fiber();
+//			test_balance();
+			test_hook_dso();
 
 //		} while (++i < 5);
-		} while (1);
+		} while (0);
 	}
 	catch (EException& e) {
 		e.printStackTrace();
@@ -1390,3 +1444,5 @@ MAIN_IMPL(testeco) {
 
 	return 0;
 }
+
+#endif //!CPP11_SUPPORT

@@ -53,6 +53,8 @@
 #else
 	#ifdef HAVE_KQUEUE
 	#include "eco_ae_kqueue.c"
+	#else //win etc.
+    #include "eco_ae_select.c"
 	#endif
 #endif
 

@@ -24,11 +24,13 @@
 #include <sys/ioctl.h>
 #include <sys/uio.h>
 #ifdef __linux__
+#include "elf_hook.h"
 #include <bits/signum.h> //__SIGRTMAX
 #include <sys/epoll.h>
 #include <sys/sendfile.h>
 #endif
 #ifdef __APPLE__
+#include "mach_hook.h"
 #include <sys/event.h>
 #endif
 
@@ -96,6 +98,8 @@ typedef ssize_t (*pread_t)(int fd, void *buf, size_t count, off_t offset);
 
 typedef ssize_t (*pwrite_t)(int fd, const void *buf, size_t count, off_t offset);
 
+typedef void* (*dlopen_t)(const char* path, int mode);
+
 #ifdef __linux__
 typedef int (*dup3_t)(int oldfd, int newfd, int flags);
 typedef hostent* (*gethostbyname_t)(const char *name);
@@ -147,6 +151,7 @@ static fwrite_t fwrite_f = NULL;
 static pread_t pread_f = NULL;
 static pwrite_t pwrite_f = NULL;
 static sendfile_t sendfile_f = NULL;
+static dlopen_t dlopen_f = NULL;
 #ifdef __linux__
 static dup3_t dup3_f = NULL;
 static gethostbyname_t gethostbyname_f = NULL;
@@ -194,6 +199,7 @@ fwrite_f = (fwrite_t)dlsym(RTLD_NEXT, "fwrite");
 pread_f = (pread_t)dlsym(RTLD_NEXT, "pread");
 pwrite_f = (pwrite_t)dlsym(RTLD_NEXT, "pwrite");
 sendfile_f = (sendfile_t)dlsym(RTLD_NEXT, "sendfile");
+dlopen_f = (dlopen_t)dlsym(RTLD_NEXT, "dlopen");
 #ifdef __linux__
 dup3_f = (dup3_t)dlsym(RTLD_NEXT, "dup3");
 gethostbyname_f = (gethostbyname_t)dlsym(RTLD_NEXT, "gethostbyname");
@@ -237,6 +243,7 @@ static void sigfunc(int sig_no) {
 
 	llong t2 = ESystem::currentTimeMillis();
 	interrupt_escaped_time = t2 - t1;
+	process_signaled = false;
 }
 
 static uint32_t PollEvent2EEvent(short events)
@@ -284,7 +291,7 @@ unsigned int sleep(unsigned int seconds)
 	EHooker::_initzz_();
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (!scheduler) {
+	if (!scheduler || EHooker::isInterrupted()) {
 		return sleep_f(seconds);
 	}
 
@@ -297,7 +304,7 @@ int usleep(useconds_t usec) {
 	EHooker::_initzz_();
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (!scheduler) {
+	if (!scheduler || EHooker::isInterrupted()) {
 		return usleep_f(usec);
 	}
 
@@ -315,7 +322,7 @@ int nanosleep(const struct timespec *req, struct timespec *rem) {
 	}
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (!scheduler) {
+	if (!scheduler || EHooker::isInterrupted()) {
 		return nanosleep_f(req, rem);
 	}
 
@@ -329,7 +336,7 @@ int close(int fd)
 	EHooker::_initzz_();
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (scheduler && EFileContext::isStreamFile(fd)) {
+	if (scheduler && EFileContext::isStreamFile(fd) && !EHooker::isInterrupted()) {
 		scheduler->delFileContext(fd);
 	}
 	return close_f(fd);
@@ -345,7 +352,7 @@ int fcntl(int fd, int cmd, ...)
 	va_end(args);
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (scheduler && EFileContext::isStreamFile(fd)) {
+	if (scheduler && EFileContext::isStreamFile(fd) && !EHooker::isInterrupted()) {
 		sp<EFileContext> fdctx = scheduler->getFileContext(fd);
 		if (!fdctx) {
 			return -1;
@@ -379,7 +386,7 @@ int ioctl(int fd, unsigned long int request, ...)
 	va_end(va);
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (scheduler && (request == FIONBIO) && EFileContext::isStreamFile(fd)) {
+	if (scheduler && (request == FIONBIO) && EFileContext::isStreamFile(fd) && !EHooker::isInterrupted()) {
 		sp<EFileContext> fdctx = scheduler->getFileContext(fd);
 		if (!fdctx) {
 			return -1;
@@ -399,7 +406,7 @@ int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t
 	if (level == SOL_SOCKET) {
 		if (optname == SO_RCVTIMEO || optname == SO_SNDTIMEO) {
 			EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-			if (scheduler && EFileContext::isStreamFile(sockfd)) {
+			if (scheduler && EFileContext::isStreamFile(sockfd) && !EHooker::isInterrupted()) {
 				sp<EFileContext> fdctx = scheduler->getFileContext(sockfd);
 				if (!fdctx) {
 					return -1;
@@ -424,7 +431,7 @@ int dup2(int oldfd, int newfd)
 	}
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (scheduler && EFileContext::isStreamFile(newfd)) {
+	if (scheduler && EFileContext::isStreamFile(newfd) && !EHooker::isInterrupted()) {
 		scheduler->delFileContext(newfd);
 	}
 
@@ -442,7 +449,7 @@ int dup3(int oldfd, int newfd, int flags)
 	}
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (scheduler && EFileContext::isStreamFile(newfd)) {
+	if (scheduler && EFileContext::isStreamFile(newfd) && !EHooker::isInterrupted()) {
 		scheduler->delFileContext(newfd);
 	}
 	return dup3_f(oldfd, newfd, flags);
@@ -454,7 +461,7 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
 	EHooker::_initzz_();
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (!scheduler) {
+	if (!scheduler || EHooker::isInterrupted()) {
 		return poll_f(fds, nfds, timeout);
 	}
 
@@ -527,7 +534,7 @@ int select(int nfds, fd_set *readfds, fd_set *writefds,
 	EHooker::_initzz_();
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (!scheduler) {
+	if (!scheduler || EHooker::isInterrupted()) {
 		return select_f(nfds, readfds, writefds, exceptfds, timeout);
 	}
 
@@ -623,7 +630,7 @@ int connect(int fd, const struct sockaddr *addr, socklen_t addrlen)
 	EHooker::_initzz_();
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (!scheduler /*|| !EFileContext::isStreamFile(fd)*/) {
+	if (!scheduler /*|| !EFileContext::isStreamFile(fd)*/ || EHooker::isInterrupted()) {
 		return connect_f(fd, addr, addrlen);
 	}
 
@@ -829,7 +836,7 @@ res_state __res_state()
 	EHooker::_initzz_();
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (!scheduler) {
+	if (!scheduler || EHooker::isInterrupted()) {
 		return __res_state_f();
 	}
 
@@ -850,7 +857,7 @@ struct hostent *gethostbyname(const char *name)
 	EHooker::_initzz_();
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (!scheduler) {
+	if (!scheduler || EHooker::isInterrupted()) {
 		return gethostbyname_f(name);
 	}
 
@@ -897,7 +904,7 @@ int epoll_wait(int epfd, struct epoll_event *events,
 	EHooker::_initzz_();
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (!scheduler || timeout == 0) {
+	if (!scheduler || timeout == 0 || EHooker::isInterrupted()) {
 		return epoll_wait_f(epfd, events, maxevents, timeout);
 	}
 
@@ -929,7 +936,7 @@ ssize_t sendfile(int out_fd, int in_fd, off_t *offset, size_t count)
 	EHooker::_initzz_();
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (!scheduler || !EFileContext::isStreamFile(out_fd)) {
+	if (!scheduler || !EFileContext::isStreamFile(out_fd) || EHooker::isInterrupted()) {
 		return sendfile_f(out_fd, in_fd, offset, count);
 	}
 
@@ -982,7 +989,7 @@ int kevent(int kq, const struct kevent *changelist, int nchanges,
 	EHooker::_initzz_();
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (!scheduler) {
+	if (!scheduler || EHooker::isInterrupted()) {
 		return kevent_f(kq, changelist, nchanges, eventlist, nevents, timeout);
 	}
 
@@ -1026,7 +1033,7 @@ int kevent64(int kq, const struct kevent64_s *changelist, int nchanges,
 	EHooker::_initzz_();
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (!scheduler) {
+	if (!scheduler || EHooker::isInterrupted()) {
 		return kevent64_f(kq, changelist, nchanges, eventlist, nevents, flags, timeout);
 	}
 
@@ -1068,7 +1075,7 @@ int sendfile(int fd, int s, off_t offset, off_t *len, struct sf_hdtr *hdtr, int 
 	EHooker::_initzz_();
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (!scheduler || !EFileContext::isStreamFile(s)) {
+	if (!scheduler || !EFileContext::isStreamFile(s) || EHooker::isInterrupted()) {
 		return sendfile_f(fd, s, offset, len, hdtr, flags);
 	}
 
@@ -1120,12 +1127,8 @@ RETRY:
 
 //=============================================================================
 
-boolean EHooker::isInterrupted(boolean ClearInterrupted) {
-	boolean r = process_signaled;
-	if (ClearInterrupted) {
-		process_signaled = false;
-	}
-	return r;
+boolean EHooker::isInterrupted() {
+	return process_signaled;
 }
 
 llong EHooker::interruptEscapedTime() {
@@ -1139,7 +1142,7 @@ ssize_t EHooker::comm_io_on_fiber(F fn, const char* name, int event, int fd, Arg
 	EHooker::_initzz_();
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (!scheduler || !EFileContext::isStreamFile(fd)) {
+	if (!scheduler || !EFileContext::isStreamFile(fd) || EHooker::isInterrupted()) {
 		return fn(std::forward<Args>(args)...);
 	}
 
@@ -1329,7 +1332,7 @@ ssize_t EHooker::comm_io_on_fiber(F fn, const char* name, int event, int fd, ...
 	va_start(args, fd);
 
 	EFiberScheduler* scheduler = EFiberScheduler::currentScheduler();
-	if (!scheduler || !EFileContext::isStreamFile(fd)) {
+	if (!scheduler || !EFileContext::isStreamFile(fd) || EHooker::isInterrupted()) {
 		ret = call_fn(null, fn, fd, args);
 		va_end(args);
 		return ret;
@@ -1382,6 +1385,147 @@ RETRY:
 }
 
 #endif //!CPP11_SUPPORT
+
+//=============================================================================
+
+extern "C" {
+
+struct rebinding __rebinding[] = {
+		{ "signal", (void*) signal, NULL },
+		{ "sleep", (void*) sleep, NULL },
+		{ "usleep", (void*) usleep, NULL },
+		{ "nanosleep", (void*) nanosleep, NULL },
+		{ "close", (void*) close, NULL },
+		{ "fcntl", (void*) fcntl, NULL },
+		{ "setsockopt", (void*) setsockopt, NULL },
+		{ "dup2", (void*) dup2, NULL },
+		{ "poll", (void*) poll, NULL },
+		{ "select", (void*) select, NULL },
+		{ "connect", (void*) connect, NULL },
+		{ "accept", (void*) accept, NULL },
+		{ "read", (void*) read, NULL },
+		{ "readv", (void*) readv, NULL },
+		{ "recvfrom", (void*) recvfrom, NULL },
+		{ "recvmsg", (void*) recvmsg, NULL },
+		{ "write", (void*) write, NULL },
+		{ "writev", (void*) writev, NULL },
+		{ "send", (void*) send, NULL },
+		{ "sendto", (void*) sendto, NULL },
+		{ "sendmsg", (void*) sendmsg, NULL },
+		{ "fread", (void*) fread, NULL },
+		{ "fwrite", (void*) fwrite, NULL },
+		{ "pread", (void*) pread, NULL },
+		{ "pwrite", (void*) pwrite, NULL },
+		{ "sendfile", (void*) sendfile, NULL },
+		{ "dlopen", (void*) dlopen, NULL }
+#ifdef __linux__
+		,
+		{ "dup3", (void*) dup3, NULL },
+		{ "gethostbyname", (void*) gethostbyname, NULL },
+		{ "__res_state", (void*) __res_state, NULL },
+		{ "__poll", (void*) __poll, NULL },
+		{ "epoll_wait", (void*) epoll_wait, NULL }
+#endif
+#ifdef __APPLE__
+		,
+		{ "kevent", (void*) kevent, NULL },
+		{ "kevent64", (void*) kevent64, NULL }
+#endif
+};
+
+#ifdef __linux__
+
+void* dlopen(const char* path, int mode)
+{
+	void* handle = dlopen_f(path, mode);
+	if (handle) {
+		rebind_symbols_image(path, handle, __rebinding, ES_ARRAY_LEN(__rebinding));
+	}
+	return handle;
+}
+
+#else //__APPLE__
+
+static const char * first_external_symbol_for_image(
+		const mach_header_t *header) {
+	Dl_info info;
+	if (dladdr(header, &info) == 0)
+		return NULL;
+
+	segment_command_t *seg_linkedit = NULL;
+	segment_command_t *seg_text = NULL;
+	struct symtab_command *symtab = NULL;
+
+	struct load_command *cmd = (struct load_command *) ((intptr_t) header
+			+ sizeof(mach_header_t));
+	for (uint32_t i = 0; i < header->ncmds;
+			i++, cmd = (struct load_command *) ((intptr_t) cmd + cmd->cmdsize)) {
+		switch (cmd->cmd) {
+		case LC_SEGMENT:
+		case LC_SEGMENT_64:
+			if (!strcmp(((segment_command_t *) cmd)->segname, SEG_TEXT))
+				seg_text = (segment_command_t *) cmd;
+			else if (!strcmp(((segment_command_t *) cmd)->segname,
+					SEG_LINKEDIT))
+				seg_linkedit = (segment_command_t *) cmd;
+			break;
+
+		case LC_SYMTAB:
+			symtab = (struct symtab_command *) cmd;
+			break;
+		}
+	}
+
+	if ((seg_text == NULL) || (seg_linkedit == NULL) || (symtab == NULL))
+		return NULL;
+
+	intptr_t file_slide = ((intptr_t) seg_linkedit->vmaddr
+			- (intptr_t) seg_text->vmaddr) - seg_linkedit->fileoff;
+	intptr_t strings = (intptr_t) header + (symtab->stroff + file_slide);
+	nlist_t *sym = (nlist_t *) ((intptr_t) header
+			+ (symtab->symoff + file_slide));
+
+	for (uint32_t i = 0; i < symtab->nsyms; i++, sym++) {
+		if ((sym->n_type & N_EXT) != N_EXT || !sym->n_value)
+			continue;
+
+		return (const char *) strings + sym->n_un.n_strx;
+	}
+
+	return NULL;
+}
+
+void* dlopen(const char* path, int mode) {
+	void* h = dlopen_f(path, mode); //!
+	if (h) {
+		/**
+		 * in order to trigger findExportedSymbol instead of findExportedSymbolInImageOrDependentImages.
+		 * See `dlsym` implementation at http://opensource.apple.com/source/dyld/dyld-239.3/src/dyldAPIs.cpp
+		 */
+		void* handle = (void *) ((intptr_t) h | 1);
+		for (int32_t i = _dyld_image_count(); i >= 0; i--) {
+			const char *first_symbol = first_external_symbol_for_image(
+					(const mach_header_t *) _dyld_get_image_header(i));
+			if (first_symbol && *first_symbol) {
+				first_symbol++; // in order to remove the leading underscore
+				void *address = dlsym(handle, first_symbol);
+				if (address) {
+					Dl_info info;
+					if (dladdr(address, &info)) {
+						rebind_symbols_image(info.dli_fbase,
+								_dyld_get_image_vmaddr_slide(i),
+								__rebinding, ES_ARRAY_LEN(__rebinding));
+					}
+					break; //!
+				}
+			}
+		}
+	}
+	return h;
+}
+#endif //!
+
+} //!C
 
 } /* namespace eco */
 } /* namespace efc */

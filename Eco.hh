@@ -8,7 +8,7 @@
 #ifndef __ECO_HH__
 #define __ECO_HH__
 
-#define ECO_VERSION "0.4.0"
+#define ECO_VERSION "0.4.2"
 
 #include "Efc.hh"
 

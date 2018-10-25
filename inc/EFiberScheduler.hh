@@ -71,11 +71,23 @@ public:
 	 */
 	virtual void schedule(sp<EFiber> fiber);
 
+	/**
+	 * Add a new fiber to this scheduler
+	 * and locked in parent fiber's thread.
+	 */
+	virtual void scheduleInheritThread(sp<EFiber> fiber);
+
 #ifdef CPP11_SUPPORT
 	/**
 	 * Add a new lambda function as fiber to this scheduler (c++11)
 	 */
 	virtual sp<EFiber> schedule(std::function<void()> f, int stackSize=1024*1024);
+
+	/**
+	 * Add a new lambda function as fiber to this scheduler (c++11)
+	 * and locked in parent fiber's thread.
+	 */
+	virtual sp<EFiber> scheduleInheritThread(std::function<void()> f, int stackSize=1024*1024);
 #endif
 
 	/**
@@ -197,6 +209,8 @@ private:
 	 */
 	void joinWithThreadBind(EA<SchedulerStub*>* schedulerStubs, int index,
 			EThread* currentThread);
+
+	void scheduleIgnoreBalance(sp<EFiber> fiber, boolean ignoreBalance);
 };
 
 } /* namespace eco */
